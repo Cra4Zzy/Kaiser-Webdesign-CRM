@@ -1,0 +1,21 @@
+services:
+  crm:
+    build: .
+    env_file: .env
+    environment:
+      PGSSLROOTCERT: /run/certs/supabase-ca.crt
+    volumes:
+      - ./secrets/supabase-ca.crt:/run/certs/supabase-ca.crt:ro
+    restart: unless-stopped
+    expose: ["8080"]
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  caddy_data:
+  caddy_config:

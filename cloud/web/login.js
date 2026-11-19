@@ -1,0 +1,3 @@
+'use strict';
+const form=document.querySelector('#loginForm'),message=document.querySelector('#loginError'),button=document.querySelector('#loginButton');
+form.addEventListener('submit',async e=>{e.preventDefault();message.hidden=true;button.disabled=true;try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))});const result=await r.json();if(!r.ok)throw Error(result.error||'Anmeldung fehlgeschlagen.');location.replace('/#overview')}catch(e){message.textContent=e.message;message.hidden=false}finally{button.disabled=false;form.elements.password.value=''}});

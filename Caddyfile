@@ -1,0 +1,5 @@
+crm.kaiser-webdesign.de {
+    encode zstd gzip
+    reverse_proxy crm:8080
+    header Strict-Transport-Security "max-age=31536000"
+}

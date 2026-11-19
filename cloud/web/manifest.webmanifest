@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Kaiser CRM · Cloud",
+  "short_name": "Kaiser CRM",
+  "description": "Gemeinsamer Arbeitsbereich für Vertrieb und Kunden",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#e9eef2",
+  "theme_color": "#142b35",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

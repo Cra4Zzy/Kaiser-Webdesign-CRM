@@ -1,0 +1,13 @@
+-- VOR AUSFÜHRUNG: Nutzer in Supabase Authentication > Users anlegen.
+-- Erst nach erfolgreicher Datenmigration ausführen. Platzhalter ersetzen.
+-- IDs und Namen der vorhandenen Arbeitsprofile anzeigen:
+SELECT id,name,active FROM kaiser_crm.crm_members ORDER BY id;
+-- 1) Admin: vorhandenes Arbeitsprofil mit persönlicher Auth-UUID verknüpfen:
+-- INSERT INTO kaiser_crm.account_access(user_id,member_id,role)
+-- VALUES ('ADMIN-AUTH-UUID',1,'admin');
+-- 2) Mitarbeiterin: eigenständiges Profil und Auth-Zuordnung gemeinsam anlegen:
+-- WITH profile AS (INSERT INTO kaiser_crm.crm_members(name) VALUES ('NAME DER MITARBEITERIN') RETURNING id)
+-- INSERT INTO kaiser_crm.account_access(user_id,member_id,role)
+-- SELECT 'MITARBEITER-AUTH-UUID'::uuid,id,'staff' FROM profile;
+-- 3) Zugang sperren (wirkt beim nächsten API-Aufruf):
+-- UPDATE kaiser_crm.account_access SET active=false WHERE user_id='MITARBEITER-AUTH-UUID';
