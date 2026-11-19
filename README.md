@@ -1,19 +1,65 @@
-# Kaiser CRM 9.9 CLOUD — IONOS
+# Kaiser CRM 9.9.1 PAGES — Cloudflare + Supabase
 
-Bestehende Python-CRM-Logik + Supabase Auth/PostgreSQL. Dieser Stand ist ein Deployment-Kandidat für einen IONOS Linux VPS mit Docker Compose, nicht für reinen Webspace/Domain-Tarif. Keine Produktivfreigabe ohne echten Supabase-Test. Die Domain kann auch auf einen anderen kompatiblen Server zeigen.
+Cloudflare Pages Functions ersetzen den alten Python-HTTP-Server im Onlinebetrieb. Das bestehende Design, die Navigation und die App-Zieladresse bleiben erhalten. Die Python-Dateien sind nur für die lokale Datenmigration und Referenz enthalten; sie werden nicht bei Pages ausgeführt.
 
-## GitHub
-Inhalt dieses Ordners in ein privates Repository laden. Keine echten Zugangsdaten, DB-Dateien, Zertifikate oder Exporte einchecken. `.gitignore` ist enthalten.
+**Status:** lokal getesteter Deployment-Kandidat. Noch keine Produktivfreigabe: SQL-Funktionen und echte Supabase-Authentifizierung müssen im neuen Projekt überprüft werden. Keine Kundendaten oder Schlüssel im Repository.
 
-## Einrichtung
-1. Neues, separates Supabase-Projekt; SQL und Migration gemäß TEAM-SETUP.md. Mitarbeiter ausschließlich freigegebenen Auth-Benutzern zuordnen. Öffentliche Registrierung deaktivieren.
-2. IONOS VPS mit Docker/Compose bereitstellen (nur falls bereits verfügbar bzw. nach Tarifentscheidung). DNS `crm` als A-Record auf die VPS-IP, ggf. AAAA nur bei funktionierendem IPv6. Ports 80/443 öffnen, 8080 nicht veröffentlichen. Andere Webserver auf denselben Ports müssen separat integriert werden.
-3. Repo auf Server klonen. `cp cloud/config.example.env .env`, dort echte Werte lokal ergänzen, `CRM_PUBLIC_URL=https://crm.kaiser-webdesign.de`. `secrets/supabase-ca.crt` aus dem Supabase-Dashboard ablegen (Datei für Container lesbar; keine Schlüssel in Git). Die Migration benötigt separat eine entsprechend privilegierte Verbindung, Runtime nur kaiser_crm_app.
-4. `docker compose up -d --build`; `docker compose logs -f crm` zur Kontrolle. Caddy bezieht ein TLS-Zertifikat, wenn DNS und Ports stimmen. `curl https://crm.kaiser-webdesign.de/healthz` prüft den HTTP-Prozess, nicht DB-Gesundheit.
-5. Login mit Admin und Mitarbeiter testen, Änderungen parallel ausführen, Archiv, Import, Export und tatsächliche PostgreSQL-Verbindung prüfen. Passwort-Wiederherstellung ist in dieser Version noch nicht implementiert; Admin kann Passwörter über Supabase verwalten.
+## 1. GitHub / Cloudflare Pages
 
-## Installation
-Handy: URL in Safari/Chrome öffnen, Menü Teilen / Zum Home-Bildschirm bzw. App installieren. Manifest und Service Worker enthalten; nur Onlinebetrieb. Keine Speicherung von Kundendaten durch den Service Worker. Windows: Download auf Loginseite, ZIP entpacken, CMD starten; erzeugt Desktop/Startmenü-Verknüpfung für Edge-App-Modus. Alternativ Edge-PWA direkt installieren. Kein natives MSI, kein unsigniertes EXE.
+- Repository: `Cra4Zzy/Kaiser-Webdesign-CRM`, Branch `main` (privat empfohlen).
+- Root Directory: leer oder `/`; Framework: None; Build Command: leer; Build-Ausgabe: `cloud/web`.
+- `functions/` und `pages/` liegen im Repository-Stamm und werden beim Pages-Deployment erkannt. Nur `cloud/web` ist öffentlich auslieferbar. _routes.json beschränkt Functions auf `/api/*`.
+- Kein eigener Python-Server, kein Docker und kein zusätzlicher VPS notwendig.
+- Projekt-Einstellungen > Runtime: Fail closed (bei erschöpftem Functions-Limit nicht auf statische Auslieferung zurückfallen).
+- Bestehende Domain `https://crm.kaiser-webdesign.de` und vorhandenes Windows-Paket/Handy-PWA weiterverwenden.
 
-## Grenzen
-Der Webserver benötigt einen dauerhaft laufenden Python-Prozess; normaler IONOS Webspace ist nicht als kompatibel bestätigt. Für reines Static Hosting müsste das Backend separat auf Supabase RPC/Edge Functions portiert werden. Keine DNS- oder Cloud-Änderungen durchgeführt. Sync: Polling alle vier Sekunden in sichtbaren Fenstern, kein Push-Realtime.
+## 2. Neues, separates Supabase-Projekt
+
+- Frankfurt / EU, nicht die Abbate- oder Avanti-Datenbank verwenden.
+- Für ein **leeres** Projekt `SUPABASE-SETUP.sql` einmal im SQL Editor ausführen. Falls 01_SCHEMA.sql bereits ausgeführt wurde, nur `cloud/04_PAGES_API.sql` ausführen. Nicht beide Varianten kombinieren.
+- Die internen Tabellen liegen im nicht exponierten Schema `kaiser_crm`. Die beiden RPCs in `public` sind ausschließlich für `service_role` freigegeben. Standardmäßig muss `public` in Data API aktiviert sein. `kaiser_crm` nicht in Exposed schemas aufnehmen.
+- Data API aktivieren, öffentliche Registrierungen unter Auth deaktivieren, Site URL auf `https://crm.kaiser-webdesign.de` setzen.
+- Kein Zugriff über direkte Browser-DB-Anfragen. API prüft Auth und aktives Teamprofil bei jeder Anfrage. Supabase Secret Key ausschließlich als Cloudflare Secret verwenden.
+
+## 3. Cloudflare Production-Variablen
+
+Pages > Einstellungen > Variablen und Geheimnisse > Produktion:
+
+| Name | Typ | Wert |
+|---|---|---|
+| `SUPABASE_URL` | Text | Projekt-URL aus Supabase Connect |
+| `SUPABASE_PUBLISHABLE_KEY` | Text oder Secret | sb_publishable_... |
+| `SUPABASE_SECRET_KEY` | Secret | sb_secret_... (niemals in GitHub oder Chat einfügen) |
+
+Danach erneutes Deployment. Keine Datenbankpasswörter, Docker-Konfiguration oder Supabase-Servicekeys im Frontend nötig.
+
+## 4. Aktuelle Kundendaten migrieren
+
+Vorher bisheriges CRM beenden und aktuelle SQLite-Datei `data/kaiser-crm.db` sichern. Erst migrieren, dann Teamprofile erstellen. Die ZIP enthält absichtlich keine Kundendaten.
+
+**Variante ohne DB-Zugangsdaten:** Auf dem eigenen Rechner, in einer Eingabeaufforderung im entpackten Codeordner (Python 3.12+):
+
+```
+python cloud/export_sql.py "C:\Pfad\zum\aktuellen\data\kaiser-crm.db" "%USERPROFILE%\Desktop\CRM-DATEN-NICHT-UPLOADEN.sql"
+```
+
+Die erzeugte Datei enthält vertrauliche Kundendaten. Nur im SQL Editor des neuen CRM-Projekts ausführen, **niemals über GitHub oder Cloudflare hochladen**. Die Migration stoppt, wenn Daten bereits vorhanden sind. Die Originaldatei bleibt unverändert. Alternative: vorhandenes `cloud/migrate.py` mit einer privilegierten DB-Verbindung lokal ausführen (siehe alte TEAM-SETUP.md nur für diese Migration).
+
+Wenn keine Daten übernommen werden sollen, kann ein leeres Profil über SQL angelegt werden; dann darf später nicht mehr die alte Migration in dieses befüllte Schema ausgeführt werden.
+
+## 5. Anmeldungen
+
+In Supabase > Authentication > Users den eigenen und den Mitarbeiterzugang anlegen. Danach `cloud/03_TEAMKONTEN.sql` mit den tatsächlichen Auth-UUIDs und passenden Arbeitsprofil-IDs verwenden. Vorhandene CRM-Teamprofile werden nicht automatisch zu Login-Konten. Kein öffentliches Signup. Login-Sitzung maximal eine Stunde; Passwort-Wiederherstellung über Supabase-Verwaltung, keine eigene Self-Service-Maske in diesem Stand.
+
+## 6. Produktivtest
+
+- Admin und Mitarbeiter in zwei getrennten Browserprofilen anmelden.
+- Einen Testkontakt protokollieren, Aufgabe planen und erledigen; beide Benutzer sehen den neuen Datenstand spätestens beim nächsten Polling (normalerweise alle 4 Sekunden im sichtbaren Fenster).
+- Gleichzeitige Bearbeitung prüfen: eine alte Revision muss 409 erhalten, Eingabe bleibt im Formular erhalten.
+- Fremdes / nicht freigegebenes Konto muss 403 erhalten. Ohne Session 401. Staff darf weder Import noch Export ausführen. Auth/DB-Fehler dürfen keine Daten liefern.
+- SQL-Funktionen und Berechtigungen im echten Projekt prüfen (auch Security Advisor); anschließend Windows/Handy installieren.
+- Excel/CSV-Import: max. 500 Datenzeilen pro Tabellenblatt und 8 MB lokale Datei, API-Nutzlast max. 2 MB; Daten werden lokal gelesen, erst beim bestätigten Import übertragen; einfache Zuordnung und Dublettenprüfung. Keine Makros, kein Formelneuberechnen, keine komplexen Excel-Sonderformate. Bei zu großen Importen aufteilen. CSV und JSON-Backup verfügbar, Wiederherstellung erfolgt administrativ außerhalb der App.
+
+## Lokale Tests
+
+`node --test pages/tests/backend.test.mjs` (Node 22). Acht lokale Tests mit simulierter Datenbank-/Auth-API. Zusätzlich Test des XLSX- und CSV-Lesers mit Chromium. SQL-Integration, Cloudflare-Deployment, tatsächliche Supabase-Berechtigungen und Endgeräte bleiben offen. Keine Produktivfreigabe vor deren Test.
