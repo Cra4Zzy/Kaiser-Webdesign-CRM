@@ -31,7 +31,22 @@ const STATUS_LABELS={none:'Noch nicht bearbeitet',open:'In der Pipeline',followu
 const companyStatusBadge=c=>{const k=companyStatus(c);return `<span class="status-pill status-${k}"><i></i>${STATUS_LABELS[k]}</span>`};
 const firmNext=c=>agenda().find(a=>a.company_id===c.id&&a.status==='open');
 const nextLabel=c=>{const a=firmNext(c);return a?`<strong>${esc(a.title)}</strong><small>${due(a)}</small>`:['open','followup'].includes(companyStatus(c))?'<span class="needs-plan">Noch nicht geplant</span>':'<span class="muted">—</span>'};
-const taskGroup=(label,rows,empty)=>`<section class="panel clear-panel"><div class="panel-head"><h3>${label} <span class="tab-count">${rows.length}</span></h3></div>${rows.map(a=>`<div class="clear-task ${a.status==='done'?'completed-task':''}"><div class="task-icon">${icon(a.kind)}</div><div class="task-copy"><button class="row-button main-link" data-action="activity-edit" data-id="${a.key}">${esc(a.title)}</button><small>${a.company_id?`<a class="firm-link" href="#company/${a.company_id}">${esc(company(a.company_id).name)}</a>`:'Allgemein'}</small></div><div class="task-date">${a.status==='done'?`<span class="muted">Erledigt ${esc(stamp(a.updated_at))}</span>`:due(a)}</div>${a.status==='open'?`<div class="task-actions">${button('Erledigt','complete',a.key,'small')}</div>`:a.status==='done'?button('Wieder öffnen','reopen',a.key,'small'):badge('Abgesagt')}</div>`).join('')||`<div class="panel-body empty-copy">${esc(empty)}</div>`}</section>`;
+const taskGroup=(label,rows,empty)=>'<section class="panel clear-panel"><div class="panel-head"><h3>'+esc(label)+' <span class="tab-count">'+rows.length+'</span></h3></div>'+
+ rows.map(a=>{
+  const isAppointment=a.source==='appointment';
+  const controls=a.status==='open'?
+    '<div class="task-actions">'+button('Erledigt','complete',a.key,'small')+
+    (isAppointment?button('Absagen','appointment-cancel',a.id,'small')+
+    button('Entfernen','appointment-archive',a.id,'small'):'')+'</div>':
+    a.status==='archived'&&isAppointment?button('Wiederherstellen','appointment-restore',a.id,'small'):
+    a.status==='done'?(button('Wieder öffnen','reopen',a.key,'small')+(isAppointment?button('Entfernen','appointment-archive',a.id,'small'):'')):
+    isAppointment?button('Entfernen','appointment-archive',a.id,'small'):badge('Abgesagt');
+  return '<div class="clear-task '+(a.status==='done'?'completed-task':'')+'"><div class="task-icon">'+icon(a.kind)+
+   '</div><div class="task-copy"><button class="row-button main-link" data-action="activity-edit" data-id="'+a.key+'">'+esc(a.title)+
+   '</button><small>'+(a.company_id?'<a class="firm-link" href="#company/'+a.company_id+'">'+esc(company(a.company_id).name)+'</a>':'Allgemein')+'</small></div>'+
+   '<div class="task-date">'+(a.status==='done'?'<span class="muted">Erledigt '+esc(stamp(a.updated_at))+'</span>':due(a))+'</div>'+
+   controls+'</div>';
+ }).join('')+'<div class="panel-body empty-copy" '+(rows.length?'hidden':'')+'>'+esc(empty)+'</div></section>';
 const blocked=d=>Boolean(d.do_not_contact||company(d.company_id).do_not_contact);
 const inScope=r=>scope==='all'||scope==='none'?!((scope==='none')&&r.owner_id):r.owner_id===Number(scope==='mine'?actor:scope);
 const matches=(...v)=>v.join(' ').toLocaleLowerCase('de').includes(query.toLocaleLowerCase('de'));
@@ -108,109 +123,22 @@ function quickStatusEditor(cid,status,preferred){const ds=data.deals.filter(d=>d
 function renderCompanyLegacy(id){const c=find('companies',id);if(!c)return blank('Firma nicht gefunden','Wähle eine Firma unter Firmen & Kontakte.');const ds=data.deals.filter(d=>d.company_id===c.id),cs=data.contacts.filter(t=>t.company_id===c.id),tasks=agenda().filter(a=>a.company_id===c.id&&a.status==='open');let url='';try{const u=new URL(c.website.startsWith('http')?c.website:'https://'+c.website);if(['https:','http:'].includes(u.protocol)&&c.website)url=u.href}catch{}return head(c.name,[c.industry,c.city].filter(Boolean).join(' · ')||'Alles zu dieser Firma an einem Ort',button('Kontakt festhalten','conversation',c.id,'primary')+button('Aufgabe planen','company-task',c.id),'FIRMA')+companyQuick(c,ds,tasks)+`${c.do_not_contact?'<div class="notice">Kontaktstopp aktiv. Interne Notizen und Aufgaben bleiben möglich.</div>':''}<div class="detail-layout"><div><section class="panel"><div class="panel-head"><div><h3>Was steht als Nächstes an?</h3><p>Aufgaben öffnen, ändern oder über „Kontakt festhalten“ abschließen.</p></div><span class="tab-count">${tasks.length}</span></div>${tasks.map(taskRow).join('')||blank('Noch kein nächster Schritt','Nach einem Gespräch kannst du hier direkt den nächsten Termin planen.')}</section><section class="panel section-gap"><div class="panel-head"><div><h3>Was bisher passiert ist</h3><p>Gespräche, Notizen und erledigte Schritte</p></div>${button('+ Notiz','company-note',c.id,'small')}</div>${timeline(data.activities.filter(a=>a.company_id===c.id))}</section><details class="panel section-gap company-deals"><summary>Angebote & Aufträge <span class="tab-count">${ds.length}</span></summary><div class="panel-body"><p class="quiet-note">Nur nötig, wenn du Angebot, Auftragswert oder Abschluss bearbeiten möchtest.</p><div class="section-gap">${button('+ Neues Anliegen / Angebot','deal-company',c.id,'small')}</div></div><div class="table-wrap"><table><tbody>${ds.map(d=>`<tr><td><a class="main-link" href="#deal/${d.id}">${esc(d.title)}</a><small>${owner(d.owner_id)}</small></td><td>${stageBadge(d)}</td><td>${money(d.value)}</td></tr>`).join('')||'<tr><td>Noch kein Angebot angelegt.</td></tr>'}</tbody></table></div></details></div><aside><section class="panel"><div class="panel-head"><h3>Kontakt aufnehmen</h3>${button('Bearbeiten','company-edit',c.id,'small')}</div>${definition([...contactLinks(c),['Website',url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(c.website)}</a>`:''],['Notizen zur Firma',esc(c.notes)]])}</section><section class="panel section-gap"><div class="panel-head"><h3>Ansprechpartner</h3>${button('+ Person','contact-company',c.id,'small')}</div>${cs.map(ct=>`<div class="person-card"><strong>${esc(ct.first_name+' '+ct.last_name)}</strong><small>${esc(ct.role)}</small>${definition(contactLinks(ct))}${button('Person bearbeiten','contact-edit',ct.id,'small')}</div>`).join('')||'<div class="panel-body"><p class="quiet-note">Noch keine Person hinterlegt.</p></div>'}</section><details class="panel section-gap company-deals"><summary>Kontaktfreigabe</summary><div class="panel-body"><p class="quiet-note">Gilt für die ganze Firma.</p><div class="section-gap">${button(c.do_not_contact?'Kontaktstopp prüfen':'Kontaktstopp setzen','stop',c.id,'small danger')}</div></div></details></aside></div>`}
 
 function renderProjects(){
- const rows=data.projects.filter(p=>inScope(p)&&matches(p.name,company(p.company_id).name)&&(!['done','open'].includes(filter)||filter==='done'&&p.status==='done'||filter==='open'&&p.status!=='done'));
- return head('Projekte','Alle Aufträge von der Zusage bis zum Abschluss.','','PROJEKTMANAGEMENT')+tabs([['open','In Bearbeitung'],['done','Abgeschlossen'],['all','Alle']])+toolbar('Projekt oder Kunde suchen …')+paginate(rows,p=>`<tr><td><button class="row-button main-link" data-action="project" data-id="${p.id}">${esc(p.name)}</button><small><a href="#company/${p.company_id}">${esc(company(p.company_id).name)}</a></small></td><td>${esc(SERVICE_TYPES[p.service_type]||'Noch zuordnen')}</td><td>${badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')}</td><td>${owner(p.owner_id)}</td><td>${dateLabel(p.deadline)}</td><td>${button('Projekt bearbeiten','project',p.id,'small')}${button('Dateien','project-files',p.id,'small')}</td></tr>`,'<thead><tr><th>Projekt</th><th>Leistung</th><th>Status</th><th>Zuständig</th><th>Termin</th><th></th></tr></thead>');
+ const all=data.projects.filter(p=>inScope(p)&&matches(p.name,company(p.company_id).name)),
+ archived=all.filter(p=>p.status==='archived'),
+ active=all.filter(p=>p.status!=='archived'&&p.status!=='done'),
+ done=all.filter(p=>p.status==='done'),
+ shown=filter==='archived'?archived:filter==='done'?done:filter==='open'?active:all.filter(p=>p.status!=='archived');
+ return head('Projekte','Website-, App- und Social-Media-Aufträge. Archivierte Projekte und Kundendateien bleiben erhalten.','','PROJEKTMANAGEMENT')+
+  tabs([['open','In Bearbeitung',active.length],['done','Abgeschlossen',done.length],['all','Alle aktiven',active.length+done.length],['archived','Archiv',archived.length]])+
+  toolbar('Projekt oder Kunde suchen …')+
+  paginate(shown,p=>'<tr><td><button class="row-button main-link" data-action="'+(p.status==='archived'?'project-restore':'project')+'" data-id="'+p.id+'">'+esc(p.name)+'</button><small><a href="#company/'+p.company_id+'">'+esc(company(p.company_id).name)+'</a></small></td>'+
+  '<td>'+esc(SERVICE_TYPES[p.service_type]||'Noch zuordnen')+'</td>'+
+  '<td>'+badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')+'</td>'+
+  '<td>'+money(p.value)+'</td><td>'+dateLabel(p.deadline)+'</td>'+
+  '<td><div class="actions">'+(p.status==='archived'?button('Wiederherstellen','project-restore',p.id,'small'):button('Bearbeiten','project',p.id,'small')+
+     button('Dateien','project-files',p.id,'small')+button('Archivieren','project-archive',p.id,'small'))+'</div></td></tr>',
+  '<thead><tr><th>Projekt / Unternehmen</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Termin</th><th>Aktionen</th></tr></thead>');
 }
-function renderSettings(){const admin=data.session.role==='admin';return head('Einstellungen','Team, Zuständigkeiten und zentrale Daten.','','TEAM-WORKSPACE')+`<div class="notice info">Ihr arbeitet gemeinsam in einer zentralen Datenbank. Jede Aktion wird deinem persönlichen Konto zugeordnet.</div><div class="settings-grid"><section class="panel settings-card"><h3>Team & Zuständigkeiten</h3><p>Angemeldet als ${esc(data.session.name)} · ${admin?'Administrator':'Mitarbeiter'}</p>${data.crm_members.map(m=>`<div class="team-row"><span class="profile-avatar">${esc(initials(m.name))}</span><div class="member-info"><strong>${esc(m.name)}</strong><small>${m.active?'Aktiv':'Deaktiviert'}</small></div></div>`).join('')}<p class="quiet-note">Persönliche Konten werden vom Administrator in Supabase freigegeben.</p></section>${admin?`<section class="panel settings-card"><h3>Daten & Sicherung</h3><p>Export und Excel-/CSV-Import stehen der Administration zur Verfügung.</p><div class="actions"><a class="button" href="/api/backup">JSON-Backup herunterladen</a><a class="button" href="/api/export/leads.csv">CSV exportieren</a>${button('Excel / CSV importieren','import')}</div><p class="quiet-note">Eine Wiederherstellung der Team-Datenbank erfolgt ausschließlich durch die Administration außerhalb der App.</p></section>`:''}<section class="panel settings-card"><h3>Synchronisierung</h3><p>Änderungen erscheinen automatisch innerhalb weniger Sekunden. Während der Bearbeitung bleiben deine Eingaben erhalten.</p><p class="quiet-note">Bei parallelen Änderungen wird vor dem Speichern ein Abgleich verlangt.</p></section><section class="panel settings-card"><img class="logo-preview" src="brand-logo-full.png" alt="Kaiser Webdesign Logo"><h3>Kaiser CRM · V9.9.1 PAGES</h3><p>Gemeinsam arbeiten, ohne lokale Datenkopien.</p></section></div>`}
-function wirePipeline(){
- let dragged=null;
- $$('[data-drag-deal]').forEach(card=>{card.addEventListener('dragstart',e=>{dragged=Number(card.dataset.dragDeal);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(dragged));card.classList.add('dragging')});card.addEventListener('dragend',()=>{dragged=null;$$('.drop-active,.dragging').forEach(x=>x.classList.remove('drop-active','dragging'))})});
- $$('[data-drop-stage]').forEach(col=>{col.addEventListener('dragover',e=>{if(dragged!==null){e.preventDefault();e.dataTransfer.dropEffect='move';col.classList.add('drop-active')}});col.addEventListener('dragleave',e=>{if(!col.contains(e.relatedTarget))col.classList.remove('drop-active')});col.addEventListener('drop',async e=>{e.preventDefault();col.classList.remove('drop-active');const id=dragged;dragged=null;if(id===null)return;const d=find('deals',id),stage=col.dataset.dropStage;if(!d||!open(d)||blocked(d)||phase(d)===stage)return;try{if(stage==='followup'){quickStatusEditor(d.company_id,'followup',d.id);return}await pipelineMove(d.id,stage)}catch(err){toast(err.message)}})});
-}
-const DASHBOARD_GROUPS=[
- {key:'new',label:'Neue Leads',tone:'#a9bac1'},
- {key:'contacted',label:'Kontaktaufnahme',tone:'#7a9ea8'},
- {key:'interest',label:'Interesse',tone:'#4f9680'},
- {key:'offer_email',label:'E-Mail-Angebote',tone:'#9183b5'},
- {key:'offer_demo',label:'Angebotsdemos',tone:'#786ab0'},
- {key:'followup',label:'Nachfassen',tone:'#d19b65'},
- {key:'won',label:'Bestandskunden',tone:'#348170'},
- {key:'no_interest',label:'Kein Interesse',tone:'#c7a49d'},
- {key:'stopped',label:'Kontaktstopp',tone:'#88949d'},
- {key:'lost',label:'Sonstige Abschlüsse',tone:'#bbc4cc'}
-];
-function dashboardGroupForDeal(d){
- if(blocked(d))return 'stopped';
- if(d.disposition==='no_interest')return 'no_interest';
- if(d.disposition!=='active')return 'lost';
- if(d.stage==='won')return 'won';
- const key=phase(d);
- return ['new','contacted','interest','offer_email','offer_demo','followup'].includes(key)?key:'interest';
-}
-function dashboardDetails(key){
- const g=DASHBOARD_GROUPS.find(x=>x.key===key)||DASHBOARD_GROUPS[0];
- const rows=data.deals.filter(d=>dashboardGroupForDeal(d)===g.key)
-  .sort((a,b)=>({high:0,medium:1,low:2}[a.priority||'medium']??1)-({high:0,medium:1,low:2}[b.priority||'medium']??1)
-   ||String(a.next_follow_up||'9999').localeCompare(String(b.next_follow_up||'9999'))
-   ||company(a.company_id).name.localeCompare(company(b.company_id).name,'de'));
- return '<div class="dashboard-detail-head"><div class="dashboard-detail-heading"><i style="background:'+g.tone+'"></i><div><span class="eyebrow">DETAILANSICHT · LIVE</span><h3>'+esc(g.label)+'</h3></div></div><span class="dashboard-detail-total">'+rows.length+' '+(rows.length===1?'Vorgang':'Vorgänge')+'</span></div>'+
-  (rows.length?
-   '<div class="dashboard-detail-rows">'+rows.map(d=>{
-    const c=company(d.company_id),next=d.next_follow_up?'<span class="dashboard-detail-date">Nächster Schritt: '+esc(dateLabel(d.next_follow_up))+'</span>':'';
-    const priority=d.priority==='high'?'<span class="dashboard-detail-priority">Hohe Priorität</span>':'';
-    return '<div class="dashboard-detail-row"><div class="dashboard-detail-copy"><a href="#company/'+d.company_id+'" class="dashboard-detail-name">'+esc(c.name)+'</a><small>'+esc(d.title||'Kundenkontakt')+'</small></div><div class="dashboard-detail-extra">'+priority+next+'</div><a class="dashboard-detail-open" href="#company/'+d.company_id+'" aria-label="Firmenakte öffnen: '+esc(c.name)+'">Öffnen</a></div>';
-   }).join('')+'</div>':
-   '<div class="dashboard-detail-empty">Hier gibt es gerade keine Vorgänge. Wähle eine andere Kategorie im Kreisdiagramm.</div>');
-}
-function selectDashboardCategory(key){
- if(!DASHBOARD_GROUPS.some(g=>g.key===key))return;
- dashboardCategory=key;
- const box=$('#dashboardSelection');
- if(!box)return;
- box.innerHTML=dashboardDetails(key);
- box.classList.remove('dashboard-detail-reveal');
- void box.offsetWidth;
- box.classList.add('dashboard-detail-reveal');
- $$('[data-action="dashboard-category"]').forEach(b=>{
-  const selected=b.dataset.id===key;
-  b.classList.toggle('selected',selected);
-  b.setAttribute('aria-pressed',selected?'true':'false');
- });
-}
-function renderOverview(){
- const items=agenda(),dueNow=items.filter(a=>a.status==='open'&&a.date&&a.date<=today()),
- calls=items.filter(a=>a.status==='open'&&a.kind==='call'),
- fresh=data.deals.filter(d=>d.disposition==='active'&&['new','attempted','contacted'].includes(d.stage)).length;
- const groups=DASHBOARD_GROUPS.map(g=>({...g,count:data.deals.filter(d=>dashboardGroupForDeal(d)===g.key).length}));
- const total=data.deals.length,circumference=2*Math.PI*74;
- let offset=0;
- const slices=groups.map(g=>{
-  const dash=total?g.count/total*circumference:0;
-  if(!g.count)return '';
-  const selected=dashboardCategory===g.key;
-  const html='<circle class="donut-arc'+(selected?' selected':'')+'" r="74" cx="100" cy="100" fill="none" stroke="'+g.tone+
-    '" stroke-width="19" stroke-dasharray="'+dash.toFixed(3)+' '+(circumference-dash).toFixed(3)+'" stroke-dashoffset="'+(-offset).toFixed(3)+
-    '" transform="rotate(-90 100 100)" role="button" tabindex="0" aria-pressed="'+selected+'" aria-label="'+esc(g.label)+': '+g.count+
-    '" data-action="dashboard-category" data-id="'+g.key+'"><title>'+esc(g.label)+' · '+g.count+'</title></circle>';
-  offset+=dash;return html;
- }).join('');
- const legend=groups.map(g=>'<button type="button" class="donut-legend-item'+(dashboardCategory===g.key?' selected':'')+
-  '" data-action="dashboard-category" data-id="'+g.key+'" aria-pressed="'+(dashboardCategory===g.key)+
-  '"><i style="background:'+g.tone+'"></i><span>'+esc(g.label)+'</span><strong>'+g.count+'</strong></button>').join('');
- const tasks=dueNow.slice(0,4).map(a=>'<div class="dashboard-todo-item"><span class="dashboard-todo-icon">'+icon(a.kind)+'</span>'+
-  '<div class="dashboard-todo-label"><a href="#'+(a.company_id?'company/'+a.company_id:'activities')+'">'+esc(a.title)+'</a>'+
-  '<small>'+esc(a.company_id?company(a.company_id).name:'Allgemeine Aufgabe')+' · '+esc(dateLabel(a.date))+'</small></div>'+
-  '<button type="button" class="dashboard-todo-done" data-action="complete" data-id="'+esc(a.key)+'">Erledigt</button></div>').join('');
- return '<section class="dashboard-greeting"><div><span class="eyebrow">KAISER WEBDESIGN · SALES WORKSPACE</span><h1>Dein Überblick.</h1><p>'+
-  new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+
-  ' · Alle Vorgänge. Ein klarer nächster Schritt.</p></div><a href="#sales" class="button primary">Zur Lead-Pipeline</a></section>'+
-  '<div class="dashboard-kpis"><button data-action="go-today"><small>Jetzt fällig</small><strong>'+dueNow.length+
-  '</strong><span>Aufgaben & Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Kontaktversuche</small><strong>'+fresh+
-  '</strong><span>Offene Erstkontakte</span></button><button data-action="go-planned"><small>Anrufe offen</small><strong>'+calls.length+
-  '</strong><span>Geplante Gespräche</span></button><button data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>'+
-  (groups.find(g=>g.key==='won')?.count||0)+'</strong><span>Bestandskunden</span></button></div>'+
-  '<section class="panel dashboard-chart dashboard-chart-full"><div class="dashboard-section-head"><div><span class="eyebrow">VERTRIEBSÜBERSICHT</span>'+
-  '<h2>Wo stehen eure Leads?</h2><p>Wähle eine Kategorie. Die Details erscheinen direkt darunter – ohne Seitenwechsel.</p></div></div>'+
-  '<div class="donut-layout"><div class="donut-visual"><svg viewBox="0 0 200 200" role="group" aria-label="Leadstatus als interaktives Kreisdiagramm">'+
-  '<circle class="donut-track" cx="100" cy="100" r="74" fill="none" stroke="#edf1f3" stroke-width="19"/>'+slices+'</svg>'+
-  '<div class="donut-center"><strong>'+total+'</strong><span>Vorgänge</span></div></div><div class="donut-legend">'+legend+'</div></div>'+
-  '<section id="dashboardSelection" class="dashboard-selection" aria-live="polite">'+dashboardDetails(dashboardCategory)+'</section></section>'+
-  '<section class="dashboard-todo-panel panel"><div class="dashboard-todo-header"><div><span class="eyebrow">DEIN WORKFLOW</span>'+
-  '<h2>To-do <span>'+dueNow.length+' fällig</span></h2></div><a href="#activities">Alle Aufgaben ansehen</a></div>'+
-  '<div class="dashboard-todo-list">'+(tasks||'<p class="dashboard-todo-empty">Keine Aufgaben für heute offen.</p>')+'</div>'+
-  (dueNow.length>4?'<p class="dashboard-todo-overflow">+'+(dueNow.length-4)+' weitere fällige Aufgaben in der Aufgabenübersicht</p>':'')+'</section>';
-}
-
 function renderCompany(id){
  const c=find('companies',id);
  if(!c)return blank('Firma nicht gefunden','Wähle eine Firma aus.');
@@ -290,9 +218,16 @@ function renderCompany(id){
    '<details><summary>Aufgabenarchiv ('+history.length+')</summary>'+taskGroup('Erledigt',history,'Noch kein Abschluss.')+'</details></section></aside></div>';
 }
 function renderAppointments(){
- const all=agenda().filter(a=>a.source==='appointment'&&inScope(a)&&matches(a.title,company(a.company_id).name));
- const upcoming=all.filter(a=>a.status==='open'&&a.date>=today()), late=all.filter(a=>a.status==='open'&&a.date<today()),done=all.filter(a=>a.status==='done'),other=all.filter(a=>a.status==='cancelled');
- return head('Termine','Vereinbarte Gespräche und Projekttermine mit Datum, Uhrzeit und Firmenbezug.',button('+ Termin vereinbaren','appointment-new','','primary'),'KALENDER')+tabs([['open','Anstehend',upcoming.length+late.length],['done','Erledigt',done.length],['cancelled','Abgesagt',other.length]])+toolbar('Termin oder Firma suchen …')+`<div class="clear-stack">${filter==='done'?taskGroup('Vergangene Termine',done,'Keine erledigten Termine.'):filter==='cancelled'?taskGroup('Abgesagte Termine',other,'Keine abgesagten Termine.'):taskGroup('Anstehende Termine',[...late,...upcoming],'Aktuell ist kein Termin vereinbart.')}</div>`;
+ const all=agenda().filter(a=>a.source==='appointment'&&inScope(a)&&matches(a.title,company(a.company_id).name)),
+ upcoming=all.filter(a=>a.status==='open'&&a.date>=today()),late=all.filter(a=>a.status==='open'&&a.date<today()),
+ done=all.filter(a=>a.status==='done'),cancelled=all.filter(a=>a.status==='cancelled'),
+ archived=all.filter(a=>a.status==='archived');
+ const rows=filter==='done'?done:filter==='cancelled'?cancelled:filter==='archived'?archived:[...late,...upcoming];
+ return head('Termine','Anstehende, abgeschlossene und abgesagte Termine. Einträge lassen sich mit Bestätigung archivieren oder wiederherstellen.',button('+ Termin vereinbaren','appointment-new','','primary'),'KALENDER')+
+ tabs([['open','Anstehend',upcoming.length+late.length],['done','Erledigt',done.length],['cancelled','Abgesagt',cancelled.length],['archived','Archiv',archived.length]])+
+ toolbar('Termin oder Firma suchen …')+
+ '<div class="clear-stack">'+taskGroup(filter==='archived'?'Archivierte Termine':filter==='done'?'Abgeschlossene Termine':filter==='cancelled'?'Abgesagte Termine':'Anstehende Termine',
+ rows,filter==='archived'?'Keine archivierten Termine.':'Keine passenden Termine.')+'</div>';
 }
 function renderSpecial(status){
  const firms=data.companies.filter(c=>matches(c.name,c.city,c.phone,c.email)&&(status==='stopped'?Boolean(c.do_not_contact):!c.do_not_contact&&companyStatus(c)==='no_interest'));
@@ -301,26 +236,29 @@ function renderSpecial(status){
 }
 function renderClients(){
  const won=data.deals.filter(d=>d.stage==='won'&&d.disposition==='active');
- const allProjects=data.projects.filter(p=>matches(p.name,company(p.company_id).name));
- const visible=allProjects.filter(p=>filter==='done'?p.status==='done':filter==='active'?p.status!=='done':true);
- const projectValue=p=>{const n=Number(p.value);return Number.isFinite(n)?n:Number(data.deals.find(d=>d.id===p.deal_id)?.value)||0};
- const sum=rows=>rows.reduce((total,p)=>total+projectValue(p),0);
- const wonValue=won.reduce((total,d)=>total+(Number(d.value)||0),0);
- const completed=allProjects.filter(p=>p.status==='done'),ongoing=allProjects.filter(p=>p.status!=='done');
- return head('Bestandskunden','Gewonnene Aufträge, Projektwerte und abgeschlossene Kundenarbeiten – übersichtlich an einem Ort.','','KUNDENBETREUUNG')+
+ const all=data.projects.filter(p=>matches(p.name,company(p.company_id).name));
+ const active=all.filter(p=>p.status!=='archived'&&p.status!=='done'),done=all.filter(p=>p.status==='done'),archived=all.filter(p=>p.status==='archived');
+ const visible=filter==='done'?done:filter==='active'?active:filter==='archived'?archived:all.filter(p=>p.status!=='archived');
+ const price=p=>Number(p.value)||0,sum=items=>items.reduce((n,p)=>n+price(p),0);
+ const wonTotal=won.reduce((n,d)=>n+(Number(d.value)||0),0);
+ return head('Bestandskunden','Gewonnene Aufträge, Projektwerte und abgeschlossene Arbeiten. Fehlzuordnungen kannst du direkt korrigieren.','','KUNDENBETREUUNG')+
  '<section class="client-revenue-grid" aria-label="Auftragswerte">'+
- '<div class="client-revenue-card"><span>Gewonnene Aufträge</span><strong>'+money(wonValue)+'</strong><small>'+won.length+' angenommene Verkaufschancen</small></div>'+
- '<div class="client-revenue-card"><span>Abgeschlossene Projekte</span><strong>'+money(sum(completed))+'</strong><small>'+completed.length+' Projekte abgeschlossen</small></div>'+
- '<div class="client-revenue-card"><span>Laufende Projekte</span><strong>'+money(sum(ongoing))+'</strong><small>'+ongoing.length+' Projekte noch offen</small></div></section>'+
- tabs([['all','Alle Kunden',allProjects.length],['active','Laufende Projekte',ongoing.length],['done','Abgeschlossene Projekte',completed.length]])+
+ '<div class="client-revenue-card"><span>Gewonnene Aufträge</span><strong>'+money(wonTotal)+'</strong><small>'+won.length+' angenommene Verkaufschancen</small></div>'+
+ '<div class="client-revenue-card"><span>Abgeschlossene Projekte</span><strong>'+money(sum(done))+'</strong><small>'+done.length+' abgeschlossene Projekte</small></div>'+
+ '<div class="client-revenue-card"><span>Laufende Projekte</span><strong>'+money(sum(active))+'</strong><small>'+active.length+' in Bearbeitung oder pausiert</small></div></section>'+
+ tabs([['all','Alle Kunden',active.length+done.length],['active','Laufende Projekte',active.length],['done','Abgeschlossene Projekte',done.length],['archived','Archiv',archived.length]])+
  toolbar('Kunde oder Projekt suchen …')+
  paginate(visible,p=>'<tr><td><a class="main-link" href="#company/'+p.company_id+'">'+esc(company(p.company_id).name)+'</a><small>'+esc(p.name)+'</small></td>'+
  '<td>'+esc(SERVICE_TYPES[p.service_type]||'Projekt')+'</td>'+
  '<td>'+badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')+'</td>'+
- '<td class="client-price-cell">'+money(projectValue(p))+'</td>'+
- '<td><div class="actions">'+button('Projekt','project',p.id,'small')+button('Dateien','project-files',p.id,'small')+'</div></td></tr>',
+ '<td class="client-price-cell">'+money(price(p))+'</td>'+
+ '<td><div class="actions">'+(p.status==='archived'?button('Wiederherstellen','project-restore',p.id,'small'):
+ button('Projekt','project',p.id,'small')+button('Dateien','project-files',p.id,'small')+
+ button('Archivieren','project-archive',p.id,'small'))+
+ (p.deal_id&&data.deals.some(d=>d.id===p.deal_id&&d.stage==='won'&&d.disposition==='active')?
+ button('Zurück in Vertrieb','customer-reopen',p.deal_id,'small'):'')+'</div></td></tr>',
  '<thead><tr><th>Kunde / Auftrag</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Aktionen</th></tr></thead>')+
- '<p class="muted client-hint">Die Werte sind gespeicherte Auftrags- beziehungsweise Projektwerte, keine bestätigten Zahlungseingänge. Gewonnene Verkaufschancen und Projekte werden nicht addiert, um Doppelzählungen zu vermeiden.</p>';
+ '<p class="muted client-hint">Angezeigt werden Auftragswerte, nicht bestätigte Zahlungseingänge. Gewonnene Chancen und Projekte werden getrennt ausgewiesen, um keine Umsätze doppelt zu zählen.</p>';
 }
 function pipelineFollowupEditor(id){
  const d=find('deals',id),base=new Date(today()+'T12:00:00Z');base.setUTCDate(base.getUTCDate()+3);
