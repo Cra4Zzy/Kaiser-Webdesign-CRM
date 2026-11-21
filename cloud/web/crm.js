@@ -190,42 +190,96 @@ function appointmentEditor(id,cid){
 async function projectFilesEditor(id){
  const p=find('projects',id);if(!p)return toast('Projekt nicht gefunden.');
  edit('Dateien · '+p.name,
-  `<section class="span2 file-vault"><p>Projektunterlagen, Code-Archive, Entwürfe und Social-Media-Assets. Dateien sind privat und nur im CRM abrufbar.</p><div id="projectFileState" class="file-vault-state">Dateien werden geladen …</div><div id="projectFileList" class="file-vault-list"></div><div class="file-vault-upload"><label>Neue Datei hochladen <small>Maximal 8 MB pro Datei</small><input type="file" id="projectUploadInput"></label><button type="button" class="button primary" id="projectUploadButton">Hochladen</button></div></section>`,
+  '<section class="span2 file-vault"><p>Projektunterlagen, Code-Archive, Entwürfe und Social-Media-Assets. Privat gespeichert, nur für angemeldete CRM-Mitglieder abrufbar.</p>'+
+  '<div id="projectFileState" class="file-vault-state">Dateien werden geladen …</div>'+
+  '<div id="projectFileList" class="file-vault-list"></div>'+
+  '<div class="file-vault-upload"><label>Neue Datei hochladen <small id="projectUploadLimit">Größe wird geprüft …</small><input type="file" id="projectUploadInput"></label>'+
+  '<button type="button" class="button primary" id="projectUploadButton">Hochladen</button>'+
+  '<button type="button" class="button" id="projectPauseButton" hidden>Pause</button></div>'+
+  '<div class="file-upload-progress" id="projectUploadProgress" hidden><div class="file-upload-progress-row"><span id="projectUploadStatus">Upload wird vorbereitet …</span><strong id="projectUploadPercent">0 %</strong></div><progress id="projectUploadBar" max="100" value="0"></progress><small>Direkt zu Supabase Storage · Wiederaufnahme bei Unterbrechungen</small></div></section>',
   async()=>{},'Schließen'
  );
- const list=$('#projectFileList'),state=$('#projectFileState'),upload=$('#projectUploadButton'),input=$('#projectUploadInput');
+ const list=$('#projectFileList'),state=$('#projectFileState'),
+  upload=$('#projectUploadButton'),pause=$('#projectPauseButton'),input=$('#projectUploadInput'),
+  limit=$('#projectUploadLimit'),progress=$('#projectUploadProgress'),
+  bar=$('#projectUploadBar'),percentage=$('#projectUploadPercent'),uploadStatus=$('#projectUploadStatus');
+ let uploader=null,maxBytes=50*1024*1024,setupReady=false;
+ const prettySize=n=>n>=1024*1024?(n/(1024*1024)).toFixed(n>=10*1024*1024?0:1)+' MB':n>=1024?(n/1024).toFixed(0)+' KB':n+' B';
+ const setProgress=(sent,total)=>{
+  progress.hidden=false;
+  const pct=Math.max(0,Math.min(100,Math.floor(sent/total*100)));
+  bar.value=pct;
+  percentage.textContent=pct+' %';
+  uploadStatus.textContent=prettySize(sent)+' / '+prettySize(total)+' hochgeladen';
+ };
  const refresh=async()=>{
   state.textContent='Dateien werden geladen …';list.innerHTML='';
-  try{
+  try {
    const info=await request('/api/project-files?project='+id);
+   if(Number.isFinite(info.upload_limit_bytes)&&info.upload_limit_bytes>0)maxBytes=info.upload_limit_bytes;
+   limit.textContent='Maximal '+prettySize(maxBytes)+' je Datei';
    if(info.setup_required){
     state.innerHTML=info.admin?'Der private Projektspeicher muss einmalig eingerichtet werden. <button type="button" class="button small" id="projectVaultSetup">Speicher aktivieren</button>':'Der private Projektspeicher wird durch einen Administrator eingerichtet.';
     if(info.admin)$('#projectVaultSetup').onclick=async()=>{try{state.textContent='Speicher wird eingerichtet …';await request('/api/project-files/init',{method:'POST',body:JSON.stringify({project:id})});await refresh()}catch(e){state.textContent=e.message}};
-    upload.disabled=true;return;
+    upload.disabled=true;setupReady=false;return;
    }
+   setupReady=true;
    upload.disabled=false;
-   state.textContent=`${info.files.length} Datei${info.files.length===1?'':'en'} · privater Projektspeicher`;
+   state.textContent=info.files.length+' Datei'+(info.files.length===1?'':'en')+' · privater Projektspeicher';
    list.innerHTML=info.files.map(file=>{
-    const size=file.size<1024?file.size+' B':file.size<1048576?Math.round(file.size/1024)+' KB':(file.size/1048576).toFixed(1)+' MB';
-    const name=file.name.replace(/^\d{13}-[A-Za-z0-9]{8}-/,'');
+    const display=file.name.replace(/^\d{13}-[A-Za-z0-9]{8}-/,'');
     const href='/api/project-files/download?project='+id+'&file='+encodeURIComponent(file.path);
-    return `<article class="file-vault-item"><div class="file-vault-file-icon">${esc((name.split('.').at(-1)||'FILE').slice(0,4).toUpperCase())}</div><div class="file-vault-description"><strong>${esc(name)}</strong><small>${esc(size)} · ${esc(dateLabel(file.created_at||''))}</small></div><a class="button small" href="${esc(href)}" download>Herunterladen</a>${info.admin?`<button type="button" class="button small" data-project-file-delete="${esc(file.path)}">Löschen</button>`:''}</article>`
+    return '<article class="file-vault-item"><div class="file-vault-file-icon">'+esc((display.split('.').at(-1)||'FILE').slice(0,4).toUpperCase())+'</div>'+
+     '<div class="file-vault-description"><strong>'+esc(display)+'</strong><small>'+esc(prettySize(file.size))+' · '+esc(dateLabel(file.created_at||''))+'</small></div>'+
+     '<a class="button small" href="'+esc(href)+'" download>Herunterladen</a>'+
+     (info.admin?'<button type="button" class="button small" data-project-file-delete="'+esc(file.path)+'">Löschen</button>':'')+'</article>';
    }).join('')||'<p class="file-vault-empty">Hier liegen noch keine Dateien. Lade das erste Kundenasset hoch.</p>';
    $$('[data-project-file-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Diese Projektdatei endgültig löschen?'))return;try{await request('/api/project-files/delete',{method:'POST',body:JSON.stringify({project:id,path:b.dataset.projectFileDelete})});await refresh()}catch(e){state.textContent=e.message}});
-  }catch(e){state.textContent=e.message;upload.disabled=true}
+  }catch(e){state.textContent=e.message;upload.disabled=true;setupReady=false}
  };
+ input.addEventListener('change',()=>{
+  if(uploader?.running)return;
+  uploader=null;
+  progress.hidden=true;
+  pause.hidden=true;
+  upload.textContent='Hochladen';
+ });
+ pause.onclick=()=>{if(uploader?.running)uploader.pause()};
  upload.onclick=async()=>{
+  if(!setupReady)return;
   const file=input.files[0];
   if(!file)return toast('Bitte zuerst eine Datei auswählen.');
-  if(file.size>8*1024*1024)return toast('Datei zu groß: maximal 8 MB.');
-  const fd=new FormData();fd.set('project',id);fd.set('file',file);
-  upload.disabled=true;state.textContent='Datei wird sicher hochgeladen …';
-  try{
-   const r=await fetch('/api/project-files',{method:'POST',body:fd,credentials:'same-origin'});
-   const j=await r.json().catch(()=>({}));
-   if(!r.ok)throw Error(j.error||'Upload fehlgeschlagen.');
-   input.value='';toast('Datei hochgeladen.');await refresh();
-  }catch(e){state.textContent=e.message;upload.disabled=false}
+  if(!file.size||file.size>maxBytes)return toast('Datei zu groß: maximal '+prettySize(maxBytes)+'.');
+  upload.disabled=true;
+  input.disabled=true;
+  try {
+   if(!uploader||uploader.file!==file){
+    const {ResumableProjectUpload}=await import('/resumable-upload.mjs?v=1');
+    uploader=new ResumableProjectUpload({
+     file,projectId:id,memberId:actor,maxBytes,
+     onProgress:setProgress,
+     onState:status=>{
+      if(status==='starting'){progress.hidden=false;uploadStatus.textContent='Sicherer Upload wird vorbereitet …';}
+      if(status==='uploading'){pause.hidden=false;}
+      if(status==='paused'){pause.hidden=true;uploadStatus.textContent='Upload pausiert – mit „Fortsetzen“ weiterladen.';}
+      if(status==='complete'){pause.hidden=true;bar.value=100;percentage.textContent='100 %';uploadStatus.textContent='Upload abgeschlossen.';}
+      if(status==='error'){pause.hidden=true;}
+     }
+    });
+   }
+   await uploader.start();
+   toast('Datei sicher hochgeladen.');
+   input.value='';uploader=null;
+   upload.textContent='Hochladen';
+   await refresh();
+  } catch(e) {
+   if(!uploader?.paused)state.textContent=e.message;
+   upload.textContent='Fortsetzen';
+  } finally {
+   input.disabled=false;
+   pause.hidden=true;
+   upload.disabled=!setupReady;
+  }
  };
  await refresh();
 }
