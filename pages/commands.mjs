@@ -22,6 +22,7 @@ export function command(snapshot,actor,p,now=new Date()){
  const refs=v=>{const d=deal(v.deal_id);let cid=d?.company_id??(v.company_id?get('companies',v.company_id).id:null);return {deal_id:d?.id??null,company_id:cid}};
  const newDeal=cid=>add('deals',{company_id:cid,title:'Kundenkontakt',stage:'new',disposition:'active',owner_id:actor.member_id,value:0});
  const quick=(d,status,reason='',date='',time='')=>{if(d.stage==='won'&&d.disposition==='active')fail('Ein gewonnener Auftrag kann hier nicht geändert werden.');let val,sub;if(status==='no_interest'){val={disposition:status,lost_reason:reason||'Kein Interesse',disposition_at:stamp,...cleared};sub='Kein Interesse'}else{if(stopped(d.company_id))fail('Kontaktstopp zuerst aufheben.');val={disposition:'active',lost_reason:'',disposition_at:'',stage:status==='followup'?'followup':'new',...(date?{next_follow_up:date,next_follow_up_time:time,next_action:'followup'}:{})};sub=status==='followup'?'Nachfassen':'Wieder offen'}let before={stage:d.stage,disposition:d.disposition};upd('deals',d.id,val);log(sub,reason,d,null,'edit',{before,after:val})};
+ const restoreWonProject=d=>{const archived=s.projects.find(p=>p.deal_id===d.id&&p.status==='archived');if(archived){upd('projects',archived.id,{status:'active'});return}if(!s.projects.some(p=>p.deal_id===d.id))add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,status:'active',owner_id:d.owner_id??null,service_type:'website'});};
  const complete=d=>{if(!d.next_follow_up)fail('Wiedervorlage bereits abgeschlossen.');let a=d.next_action||'other',title=actionNames[a]||'Wiedervorlage';let t=add('tasks',{title,kind:['call','email','meeting'].includes(a)?a:'task',status:'done',due_date:d.next_follow_up,due_time:d.next_follow_up_time||'',company_id:d.company_id,deal_id:d.id,owner_id:d.owner_id??null,notes:'Abgeschlossene Vertriebswiedervorlage.'});upd('deals',d.id,cleared);log('Wiedervorlage erledigt',title,d,null,'edit',{task_id:t.id});return t.id};
  if(!p||typeof p!=='object'||!p.values||typeof p.values!=='object'||Array.isArray(p.values))fail('Ungültige Anfrage.');const v=p.values;let id=p.id?Number(p.id):null;
  switch(p.op){
@@ -43,9 +44,11 @@ export function command(snapshot,actor,p,now=new Date()){
   else if(status==='building'){val.stage='won';label='Zusage · Auftrag in Bearbeitung'}
   else {val.stage=status;label={new:'Neuer Lead',contacted:'Kontaktaufnahme',interest:'Interesse bestätigt'}[status]}
   upd('deals',id,val);
-  if(status==='building'&&!s.projects.some(p=>p.deal_id===d.id)){
+  if(status==='building'){
     const service_type=choice(v.service_type||'website',['website','app','social_media','mixed'],'Leistung');
-    add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,status:'active',owner_id:d.owner_id??null,service_type});
+    const existing=s.projects.find(p=>p.deal_id===d.id);
+    if(existing&&existing.status==='archived')upd('projects',existing.id,{status:'active',service_type});
+    else if(!existing)add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,status:'active',owner_id:d.owner_id??null,service_type});
   }
   log(label,txt(v.notes),d,null,'edit',{before,after:val});
   break
@@ -55,7 +58,12 @@ export function command(snapshot,actor,p,now=new Date()){
   upd('deals',id,{priority});log('Priorität geändert',{high:'Hoch',medium:'Mittel',low:'Niedrig'}[priority],d);break
  }
  case 'company_quick_status':case 'quick_status':{if(p.op==='company_quick_status'){let cid=get('companies',id).id;if(s.deals.some(d=>d.company_id===cid))fail('Firma hat bereits einen Vorgang.');id=newDeal(cid).id}let status=choice(v.status,['no_interest','followup','open'],'Status'),d=status==='followup'?day(v.due_date):'';if(status==='followup'&&!d)fail('Bitte Datum auswählen.');quick(deal(id),status,txt(v.reason),d,clock(d?v.due_time:'',d));break}
- case 'stage':{let d=deal(id),status=choice(v.status,['open','won','lost'],'Abschluss'),stage=choice(v.stage,phases,'Phase'),reason=txt(v.reason);if(status==='open'&&stopped(d.company_id))fail('Kontaktstopp aktiv.');if(status==='lost'&&!reason)fail('Verlustgrund fehlt.');let val={stage:status==='won'?'won':stage,disposition:status==='lost'?'lost':'active',lost_reason:status==='lost'?reason:'',disposition_at:status==='lost'?stamp:'',...(status==='open'?{}:cleared)},before={stage:d.stage,disposition:d.disposition};upd('deals',id,val);if(status==='won'&&!s.projects.some(r=>r.deal_id===id))add('projects',{company_id:d.company_id,deal_id:id,name:d.title,value:d.value??0,status:'active',owner_id:d.owner_id??null,service_type:choice(v.service_type||'website',['website','app','social_media','mixed'],'Leistung')});log(status==='won'?'Auftrag gewonnen':status==='lost'?'Verkaufschance verloren':'Verkaufsphase geändert',reason,d,null,'edit',{before,after:val});break}
+ case 'stage':{let d=deal(id),status=choice(v.status,['open','won','lost'],'Abschluss'),stage=choice(v.stage,phases,'Phase'),reason=txt(v.reason);if(status==='open'&&stopped(d.company_id))fail('Kontaktstopp aktiv.');if(status==='lost'&&!reason)fail('Verlustgrund fehlt.');let val={stage:status==='won'?'won':stage,disposition:status==='lost'?'lost':'active',lost_reason:status==='lost'?reason:'',disposition_at:status==='lost'?stamp:'',...(status==='open'?{}:cleared)},before={stage:d.stage,disposition:d.disposition};upd('deals',id,val);if(status==='won'){
+ const service_type=choice(v.service_type||'website',['website','app','social_media','mixed'],'Leistung');
+ const existing=s.projects.find(r=>r.deal_id===id);
+ if(existing?.status==='archived')upd('projects',existing.id,{status:'active',service_type});
+ else if(!existing)add('projects',{company_id:d.company_id,deal_id:id,name:d.title,value:d.value??0,status:'active',owner_id:d.owner_id??null,service_type});
+}log(status==='won'?'Auftrag gewonnen':status==='lost'?'Verkaufschance verloren':'Verkaufsphase geändert',reason,d,null,'edit',{before,after:val});break}
  case 'stop':{get('companies',id);let stop=Number(Boolean(v.stop));upd('companies',id,{do_not_contact:stop});for(const d of s.deals.filter(d=>d.company_id===id))upd('deals',d.id,{do_not_contact:stop,...(stop?cleared:{})});log(stop?'Kontaktstopp gesetzt':'Kontaktstopp aufgehoben',txt(v.reason),null,id);break}
  case 'log':case 'conversation':{let conv=p.op==='conversation',d=deal(v.deal_id),cid=conv?get('companies',v.company_id).id:d?.company_id;if(!cid||d&&d.company_id!==cid)fail('Ungültige Firmenzuordnung.');let kind=choice(v.kind,['note',...contactKinds,...(conv?[]:['work'])],'Kontaktart'),body=txt(v.body),result=kind==='note'?'Notiz':req(v.result,'Ergebnis');if(kind==='note'&&!body)fail('Bitte eine Notiz eingeben.');if(contactKinds.includes(kind)&&stopped(cid))fail('Kontaktstopp aktiv.');let status=conv?choice(v.sales_status??'keep',['keep','no_interest','followup','open'],'Status'):'keep';if(conv&&!d&&status!=='keep'&&kind!=='note'&&!s.deals.some(x=>x.company_id===cid))d=newDeal(cid);
  let task=null;if(conv&&choice(v.planning??'keep',['keep','plan'],'Planung')==='plan'){let date=day(v.due_date),k=choice(v.task_kind??'call',kinds,'Aufgabenart');if(!date)fail('Bitte Datum für nächsten Schritt angeben.');if(contactKinds.includes(k)&&stopped(cid))fail('Kontaktstopp aktiv.');task={title:req(v.title,'Nächster Schritt'),kind:k,due_date:date,due_time:clock(v.due_time,date),owner_id:owner(v.owner_id),company_id:cid,deal_id:d?.id??null}}
@@ -105,10 +113,10 @@ export function command(snapshot,actor,p,now=new Date()){
    }else if(status==='won'){
     Object.assign(val,{stage:'won'});
     const service=choice(v.service_type,['website','app','social_media','mixed'],'Leistung');
-    if(!s.projects.some(x=>x.deal_id===d.id)){
-     add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,
+    const existing=s.projects.find(x=>x.deal_id===d.id);
+    if(existing?.status==='archived')upd('projects',existing.id,{status:'active',service_type:service});
+    else if(!existing)add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,
        status:'active',owner_id:d.owner_id??null,service_type:service});
-    }
    }else{
     val.stage=status;
     if(status==='offer_email'||status==='offer_demo')val.proposal_sent_at=stamp;
@@ -134,7 +142,54 @@ export function command(snapshot,actor,p,now=new Date()){
  case 'complete_followup':id=complete(deal(id));break;
  case 'followup':{let d=deal(id),date=day(v.due_date);if(date&&(d.stage==='won'||d.disposition!=='active'||stopped(d.company_id)))fail('Keine Wiedervorlage möglich.');if(!date&&d.next_follow_up){complete(d);break}upd('deals',id,{next_follow_up:date,next_follow_up_time:clock(v.due_time,date),next_action:date?choice(v.next_action??'call',Object.keys(actionNames),'Nächster Schritt'):''});log('Bestehende Wiedervorlage geändert','',d);break}
  case 'appointment':{let a=id?get('appointments',id):{},x={...a,...v},r=refs(x),start=txt(x.start_at),end=txt(x.end_at),valid=t=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(t)&&Number.isFinite(Date.parse(t));if(!valid(start)||!valid(end)||Date.parse(end)<=Date.parse(start)||Date.parse(end)-Date.parse(start)>31*86400000)fail('Ungültiger Terminzeitraum.');let val={...r,title:req(x.title,'Termintitel'),start_at:start.slice(0,16),end_at:end.slice(0,16),location:txt(x.location),kind:choice(x.kind||'meeting',['meeting','call','work','personal'],'Terminart'),status:choice(x.status||'planned',['planned','done','cancelled'],'Terminstatus'),reminder_minutes:choice(Number(x.reminder_minutes??15),[-1,0,5,15,30,60,1440],'Erinnerung'),notes:txt(x.notes),owner_id:owner(x.owner_id||actor.member_id)};if(r.company_id&&val.status==='planned'&&['call','meeting'].includes(val.kind)&&stopped(r.company_id))fail('Kontaktstopp aktiv.');id=id?upd('appointments',id,val).id:add('appointments',val).id;log('Termin '+(a.id?'aktualisiert':'vereinbart'),val.title,deal(r.deal_id),r.company_id);break}
- case 'project':{let a=get('projects',id),val={name:req(v.name,'Projektname'),status:choice(v.status,['planning','active','review','done','on_hold'],'Projektstatus'),deadline:day(v.deadline),notes:txt(v.notes),owner_id:owner(v.owner_id),service_type:choice(v.service_type||a.service_type||'other',['other','website','app','social_media','mixed'],'Leistung')};upd('projects',id,val);log('Projekt aktualisiert',val.name,deal(a.deal_id),a.company_id);break}
+ case 'customer_reopen':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Rückstufung bestätigen.');
+  const d=get('deals',id);
+  if(d.stage!=='won'||d.disposition!=='active')fail('Dieser Auftrag ist kein aktiver Bestandskundenauftrag.');
+  const reason=req(v.reason,'Grund für Rückstufung');
+  const next=choice(v.stage||'interest',['new','contacted','interest','offer_email','offer_demo','followup'],'Neue Phase');
+  const val={stage:next,disposition:'active',...cleared};
+  if(next==='followup'){const date=day(v.due_date);if(!date)fail('Datum der Wiedervorlage fehlt.');Object.assign(val,{next_follow_up:date,next_action:'call'});}
+  upd('deals',id,val);
+  const related=s.projects.filter(p=>p.deal_id===id&&p.status!=='archived');
+  for(const p of related)upd('projects',p.id,{status:'archived'});
+  log('Bestandskunde in Vertrieb zurückgestuft',reason,d,null,'edit',{from:'won',to:next,archived_project_ids:related.map(p=>p.id)});
+  break;
+ }
+ case 'project_archive':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Archivierung bestätigen.');
+  const project=get('projects',id);
+  if(project.status==='archived')fail('Projekt ist bereits archiviert.');
+  upd('projects',id,{status:'archived'});
+  log('Projekt archiviert',txt(v.reason)||project.name,deal(project.deal_id),project.company_id,'edit',{project_id:id,previous_status:project.status});
+  break;
+ }
+ case 'project_restore':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Wiederherstellung bestätigen.');
+  const project=get('projects',id);
+  if(project.status!=='archived')fail('Projekt ist nicht archiviert.');
+  upd('projects',id,{status:'on_hold'});
+  log('Projekt wiederhergestellt','Projekt zunächst pausiert, Status bitte prüfen.',deal(project.deal_id),project.company_id,'edit',{project_id:id});
+  break;
+ }
+ case 'appointment_archive':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Entfernung bestätigen.');
+  const appointment=get('appointments',id);
+  if(appointment.status==='archived')fail('Termin ist bereits archiviert.');
+  const old=appointment.status;
+  upd('appointments',id,{status:'archived'});
+  log('Termin aus Kalender entfernt',txt(v.reason)||appointment.title,deal(appointment.deal_id),appointment.company_id,'edit',{appointment_id:id,previous_status:old});
+  break;
+ }
+ case 'appointment_restore':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Wiederherstellung bestätigen.');
+  const appointment=get('appointments',id);
+  if(appointment.status!=='archived')fail('Termin ist nicht archiviert.');
+  upd('appointments',id,{status:'cancelled'});
+  log('Termin wiederhergestellt','Als abgesagt wiederhergestellt; bei Bedarf neu einplanen.',deal(appointment.deal_id),appointment.company_id,'edit',{appointment_id:id});
+  break;
+ }
+ case 'project':{let a=get('projects',id);if(a.status==='archived')fail('Archiviertes Projekt erst wiederherstellen.');let val={name:req(v.name,'Projektname'),status:choice(v.status,['planning','active','review','done','on_hold'],'Projektstatus'),value:cash(v.value??a.value??0),deadline:day(v.deadline),notes:txt(v.notes),owner_id:owner(v.owner_id),service_type:choice(v.service_type||a.service_type||'other',['other','website','app','social_media','mixed'],'Leistung')};upd('projects',id,val);log('Projekt aktualisiert',val.name,deal(a.deal_id),a.company_id);break}
  default:fail('Unbekannte Aktion.');
  }return {id,patches};
 }
