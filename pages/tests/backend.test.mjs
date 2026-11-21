@@ -14,3 +14,42 @@ test('task from other company cannot close; invalid planning leaves original unc
 test('API verifies auth and server-side actor, denies stale revision and cross-origin',async()=>{const original=globalThis.fetch;let snap={...base(),revision:'a',session:staff},patches=null;globalThis.fetch=async(url,o)=>{let p=new URL(url).pathname;if(p==='/auth/v1/user')return Response.json({id:'uid-staff'});if(p.endsWith('/kaiser_pages_read')){assert.equal(JSON.parse(o.body).p_uid,'uid-staff');return Response.json(snap)}if(p.endsWith('/kaiser_pages_apply')){let b=JSON.parse(o.body);assert.equal(b.p_uid,'uid-staff');patches=b.p_patches;return Response.json({ok:true})}throw Error(p)};const env={SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'pub',SUPABASE_SECRET_KEY:'secret'};const req=(method='GET',body,authed=true,origin='https://crm.example.com')=>onRequest({env,request:new Request('https://crm.example.com/api/crm',{method,headers:{...(authed?{Cookie:'__Host-kaiser_session=token'}:{}),Origin:origin},...(body?{body:JSON.stringify(body)}:{})})});try{assert.equal((await req('GET',null,false)).status,401);assert.equal((await req()).status,200);assert.equal((await req('POST',{revision:'old',op:'company',values:{name:'x'}})).status,409);assert.equal((await req('POST',{revision:'a',op:'member',values:{name:'x'}})).status,403);assert.equal((await req('POST',{revision:'a',op:'company',values:{name:'x'}},true,'https://other.example')).status,403);assert.equal((await req('POST',{revision:'a',op:'company',actor_id:1,values:{name:'x'}})).status,200);assert.equal(JSON.parse(patches.at(-1).values.metadata).actor_id,2)}finally{globalThis.fetch=original}});
 import {importRows} from '../import.mjs';
 test('import deduplicates, preserves exclusions, explicit status and malformed date validation',()=>{let s=base();s.companies[0].city='Nürnberg';s.companies[0].do_not_contact=1;let r=importRows(s,actor,{headers:['Firma','Ort','Status','Termin'],mapping:{company_name:0,city:1,stage:2,next_follow_up:3},rows:[['Testfirma','Nürnberg','',''],['Neu','Berlin','kein interesse',''],['Neu','Berlin','',''],['Fehler','Berlin','neu','31.02.2026']]},now);assert.deepEqual([r.report.imported,r.report.duplicates,r.report.excluded,r.report.errors],[1,0,2,1]);assert.equal(r.patches.find(p=>p.table==='deals').values.disposition,'no_interest');assert.throws(()=>importRows(s,staff,{}),/Administration/)});
+
+test('missed call schedules automatic followup in three days, without duplicate task',()=>{
+ const snap=base();run(snap,actor,'deal',null,{company_id:1,title:'Akquise',value:100});
+ run(snap,staff,'pipeline',1,{status:'not_reached'});
+ assert.equal(snap.deals[0].stage,'followup');
+ assert.equal(snap.deals[0].next_follow_up,'2026-11-22');
+ assert.equal(snap.deals[0].next_action,'call');
+ assert.equal(snap.tasks.length,0);
+ run(snap,staff,'pipeline',1,{status:'reached'});
+ assert.equal(snap.deals[0].stage,'interest');
+ assert.equal(snap.deals[0].next_follow_up,'');
+});
+test('offer variants, priority and confirmed work produce exactly one categorized project',()=>{
+ const snap=base();run(snap,actor,'deal',null,{company_id:1,title:'Social Media',value:1200});
+ run(snap,staff,'deal_priority',1,{priority:'high'});
+ run(snap,staff,'pipeline',1,{status:'offer_demo'});
+ assert.equal(snap.deals[0].stage,'offer_demo');
+ assert.equal(snap.deals[0].priority,'high');
+ run(snap,actor,'pipeline',1,{status:'building',service_type:'social_media'});
+ assert.equal(snap.deals[0].stage,'won');
+ assert.equal(snap.projects.length,1);
+ assert.equal(snap.projects[0].status,'active');
+ assert.equal(snap.projects[0].service_type,'social_media');
+ assert.throws(()=>run(snap,actor,'pipeline',1,{status:'building'}),/Gewonnene/);
+});
+test('new appointment can be created with a linked company and dates',()=>{
+ const snap=base();
+ run(snap,staff,'appointment',null,{company_id:1,title:'Erstgespräch',start_at:'2026-11-23T14:00',end_at:'2026-11-23T14:30'});
+ assert.equal(snap.appointments[0].owner_id,2);
+ assert.equal(snap.appointments[0].status,'planned');
+ assert.equal(snap.appointments[0].company_id,1);
+});
+test('blocked lead cannot be moved and no-interest remains visible as disposition',()=>{
+ const snap=base();run(snap,actor,'deal',null,{company_id:1,title:'Website',value:700});
+ run(snap,staff,'pipeline',1,{status:'no_interest',reason:'Aktuell kein Bedarf'});
+ assert.equal(snap.deals[0].disposition,'no_interest');
+ run(snap,actor,'stop',1,{stop:true});
+ assert.throws(()=>run(snap,staff,'pipeline',1,{status:'interest'}),/Kontaktstopp/);
+});
