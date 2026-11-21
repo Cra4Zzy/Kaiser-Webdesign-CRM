@@ -107,3 +107,17 @@ test('server mints only project-scoped signed upload tickets with private keys k
   assert.equal(urls[0].headers.Authorization,'Bearer private-service-role-key');
  }finally{globalThis.fetch=oldFetch}
 });
+test('modern sb_secret API keys are never forwarded as bearer tokens',async()=>{
+ const old=globalThis.fetch,requestHeaders=[];
+ globalThis.fetch=async(url,opts)=>{requestHeaders.push(opts.headers);return Response.json({token:'signed-token-valid-long-enough'})};
+ try {
+  const req=new Request('https://crm.example.com/api/project-files/sign',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({project:1,name:'asset.zip',size:120000})
+  });
+  const result=await handleProjectFiles({req,c:{url:'https://example.supabase.co',secret:'sb_secret_fakekeyvalue'},session:{role:'admin'},projects:[{id:1}]});
+  assert.equal(result.status,200);
+  assert.equal(requestHeaders[0].apikey,'sb_secret_fakekeyvalue');
+  assert.ok(!('Authorization' in requestHeaders[0]));
+ } finally {globalThis.fetch=old}
+});
