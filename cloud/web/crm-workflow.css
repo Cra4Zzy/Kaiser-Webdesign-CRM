@@ -299,7 +299,7 @@ button,.button{font-weight:500}
 .donut-center strong{font-size:clamp(38px,4.4vw,66px);line-height:1.05;font-weight:650;letter-spacing:-.065em;color:var(--status-color,#163f35)}
 .donut-center .donut-center-label{font-size:12px;font-weight:600;color:#344e59;line-height:1.4}
 .donut-center .donut-center-share{font-size:11px;color:#62757d}
-.donut-arc{stroke-width:24;pointer-events:visibleStroke}
+.donut-arc{stroke-width:24;stroke-linecap:butt;pointer-events:visibleStroke}
 .donut-arc.selected,.donut-arc:hover,.donut-arc:focus-visible{stroke-width:29;filter:drop-shadow(0 3px 3px #163b4020)}
 .donut-arc:focus-visible{stroke-width:32}
 .dashboard-chart-full .donut-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 11px;min-width:0}
