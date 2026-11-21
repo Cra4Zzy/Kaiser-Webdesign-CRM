@@ -62,6 +62,73 @@ export function command(snapshot,actor,p,now=new Date()){
  if(conv&&v.complete){let m=/^(task|appointment|followup):(\d+)$/.exec(v.complete);if(!m)fail('Ungültige Aufgabe.');let t={task:'tasks',appointment:'appointments',followup:'deals'}[m[1]],old=get(t,m[2]);if(old.company_id!==cid)fail('Aufgabe gehört zu einer anderen Firma.');if(m[1]==='followup')complete(old);else{if(old.status!==(t==='tasks'?'open':'planned'))fail('Aufgabe bereits abgeschlossen.');upd(t,old.id,{status:'done'});log('Aufgabe abgeschlossen',old.title,deal(old.deal_id),cid)}}
  log(result,body,d,cid,kind);if(d&&contactKinds.includes(kind))upd('deals',d.id,{last_contact:today});if(status!=='keep'){if(!d||kind==='note')fail('Statusänderung benötigt einen Kontaktvorgang.');if(status==='followup'&&!task&&result!=='Nicht erreicht')fail('Bitte nächsten Schritt planen.');if(status==='no_interest'&&task)fail('Bei Kein Interesse keine neue Aufgabe planen.');quick(d,status,body,result==='Nicht erreicht'&&!task?inDays(3):'');if(status==='followup'&&task&&d.next_follow_up)upd('deals',d.id,cleared)}if(task){add('tasks',task);log('Nächster Schritt geplant',task.title,d,cid)}break}
  case 'task':{let r=refs(v),date=day(v.due_date),kind=choice(v.kind??'task',kinds,'Aktivitätsart');if(r.company_id&&contactKinds.includes(kind)&&stopped(r.company_id))fail('Kontaktstopp aktiv.');let val={...r,title:req(v.title,'Titel'),due_date:date,due_time:clock(v.due_time,date),notes:txt(v.notes),kind,owner_id:owner(v.owner_id),priority:choice(v.priority??'medium',['high','medium','low'],'Priorität')};id=id?upd('tasks',id,val).id:add('tasks',val).id;log('Aktivität geplant',val.title,deal(r.deal_id),r.company_id);break}
+ case 'complete_work':{
+  // A completion is one atomic CRM command: log the work, finish the source,
+  // and optionally advance the sales pipeline. No silent status changes.
+  if(v.confirmed!==true&&v.confirmed!=='yes')fail('Bitte den Abschluss ausdrücklich bestätigen.');
+  const match=/^(task|appointment|followup):([1-9]\d*)$/.exec(txt(v.target));
+  if(!match)fail('Ungültige Aufgabe.');
+  const source=match[1],record=source==='followup'?get('deals',match[2]):get(source==='task'?'tasks':'appointments',match[2]);
+  if(source==='followup'?!record.next_follow_up||record.stage==='won'||record.disposition!=='active':
+    record.status!==(source==='task'?'open':'planned'))fail('Dieser Vorgang wurde bereits abgeschlossen.');
+  const work=choice(v.work_kind,['call','email','meeting','offer','demo','work','other'],'Erledigte Tätigkeit');
+  const result=req(v.result,'Ergebnis / Notiz');
+  const status=choice(v.pipeline_status,['keep','contacted','not_reached','interest','offer_email','offer_demo','followup','no_interest','won'],'Pipeline-Status');
+  const cid=record.company_id||null;
+  let d=source==='followup'?record:(record.deal_id?get('deals',record.deal_id):null);
+  if(d&&cid&&d.company_id!==cid)fail('Unpassende Firmenzuordnung.');
+  if(v.deal_id){
+   const selected=get('deals',v.deal_id);
+   if(!cid||selected.company_id!==cid||d&&selected.id!==d.id)fail('Vorgang gehört nicht zur Aufgabe.');
+   d=selected;
+  }
+  if(status!=='keep'&&!d) {
+   if(!cid)fail('Ohne Firmenbezug kann keine Pipeline geändert werden.');
+   const active=s.deals.filter(x=>x.company_id===cid&&x.disposition==='active'&&x.stage!=='won');
+   if(active.length>1)fail('Bitte zuerst die passende Verkaufschance auswählen.');
+   d=active[0]||newDeal(cid);
+  }
+  if(cid&&stopped(cid)&&(status!=='keep'||['call','email','meeting','offer','demo'].includes(work)))
+   fail('Kontaktstopp aktiv. Bitte keine Kontaktaktion abschließen.');
+  if(d&&status!=='keep'){
+   if(d.stage==='won')fail('Abgeschlossene Kundenaufträge nicht in die Lead-Pipeline verschieben.');
+   const val={disposition:'active',lost_reason:'',disposition_at:'',...cleared};
+   if(status==='no_interest'){
+    Object.assign(val,{disposition:'no_interest',lost_reason:result,disposition_at:stamp});
+   }else if(status==='not_reached'){
+    Object.assign(val,{stage:'followup',next_follow_up:inDays(3),next_follow_up_time:'',next_action:'call',last_contact:today});
+   }else if(status==='followup'){
+    const followDate=day(v.due_date)||inDays(3);
+    Object.assign(val,{stage:'followup',next_follow_up:followDate,
+      next_follow_up_time:clock(v.due_time,followDate),next_action:'followup'});
+   }else if(status==='won'){
+    Object.assign(val,{stage:'won'});
+    const service=choice(v.service_type,['website','app','social_media','mixed'],'Leistung');
+    if(!s.projects.some(x=>x.deal_id===d.id)){
+     add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,
+       status:'active',owner_id:d.owner_id??null,service_type:service});
+    }
+   }else{
+    val.stage=status;
+    if(status==='offer_email'||status==='offer_demo')val.proposal_sent_at=stamp;
+   }
+   upd('deals',d.id,val);
+  }
+  if(source==='task')upd('tasks',record.id,{status:'done'});
+  else if(source==='appointment')upd('appointments',record.id,{status:'done'});
+  else{
+   // Record the completed callback before replacing it with a new follow-up.
+   add('tasks',{title:record.next_action==='call'?'Rückruf erledigt':'Wiedervorlage erledigt',
+     kind:'call',status:'done',due_date:record.next_follow_up,
+     due_time:record.next_follow_up_time||'',company_id:cid,deal_id:record.id,
+     owner_id:record.owner_id??null,notes:result});
+   if(status==='keep')upd('deals',record.id,cleared);
+  }
+  if(d&&['call','email','meeting','offer','demo'].includes(work))upd('deals',d.id,{last_contact:today});
+  log('Erledigt · '+({call:'Anruf',email:'E-Mail',meeting:'Termin',offer:'Angebot',demo:'Demo',work:'Projektarbeit',other:'Sonstiges'}[work]),
+    result,d,cid,'edit',{source,target:v.target,work_kind:work,pipeline_status:status});
+  break;
+ }
  case 'task_status':{let t=get('tasks',id),status=choice(v.status,['open','done','cancelled'],'Aktivitätsstatus');upd('tasks',id,{status});log({open:'Aktivität wieder geöffnet',done:'Aktivität erledigt',cancelled:'Aktivität abgesagt'}[status],t.title,deal(t.deal_id),t.company_id);break}
  case 'complete_followup':id=complete(deal(id));break;
  case 'followup':{let d=deal(id),date=day(v.due_date);if(date&&(d.stage==='won'||d.disposition!=='active'||stopped(d.company_id)))fail('Keine Wiedervorlage möglich.');if(!date&&d.next_follow_up){complete(d);break}upd('deals',id,{next_follow_up:date,next_follow_up_time:clock(v.due_time,date),next_action:date?choice(v.next_action??'call',Object.keys(actionNames),'Nächster Schritt'):''});log('Bestehende Wiedervorlage geändert','',d);break}
