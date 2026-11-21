@@ -13,7 +13,7 @@ const answer=(body,status=200)=>new Response(JSON.stringify(body),{status,header
 const denied=(status,message)=>Object.assign(new Error(message),{status});
 const cleanName=name=>{let s=String(name||'datei').normalize('NFKD').replace(/[^\x20-\x7E]/g,'').replace(/[^A-Za-z0-9._-]/g,'-').replace(/^-+/,'').slice(-92);return !s||s==='.'||s==='..'?'datei':s};
 const folder=id=>String(id)+'/';
-function credentials(c){return {apikey:c.secret,Authorization:'Bearer '+c.secret}}
+function credentials(c){return c.secret.startsWith('sb_secret_')?{apikey:c.secret}:{apikey:c.secret,Authorization:'Bearer '+c.secret}}
 async function storage(c,path,{method='GET',body,headers={}}={}){
  const res=await fetch(c.url+'/storage/v1/'+path,{method,headers:{...credentials(c),...headers},body,redirect:'manual'});
  if(res.status>=300&&res.status<400)throw denied(502,'Unerwartete Weiterleitung im Dateispeicher.');
