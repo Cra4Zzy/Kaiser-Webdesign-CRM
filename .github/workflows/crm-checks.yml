@@ -2,6 +2,7 @@ name: CRM checks
 on:
   push:
     branches:
+      - main
       - feature/pipeline-mobile-2026
   pull_request:
     branches:
