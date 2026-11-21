@@ -63,3 +63,13 @@ In Supabase > Authentication > Users den eigenen und den Mitarbeiterzugang anleg
 ## Lokale Tests
 
 `node --test pages/tests/backend.test.mjs` (Node 22). Acht lokale Tests mit simulierter Datenbank-/Auth-API. Zusätzlich Test des XLSX- und CSV-Lesers mit Chromium. SQL-Integration, Cloudflare-Deployment, tatsächliche Supabase-Berechtigungen und Endgeräte bleiben offen. Keine Produktivfreigabe vor deren Test.
+
+## Projektdateien: direkte, fortsetzbare Uploads
+
+Neue Uploads laufen nicht mehr über die Cloudflare-Funktion. Der authentifizierte Endpunkt POST /api/project-files/sign erstellt ein pfadgebundenes, kurzlebiges Upload-Ticket. Der Browser überträgt Dateien direkt zu Supabase Storage mit TUS in 6-MiB-Blöcken, Fortschritt, Pause und Wiederaufnahme nach erneuter Dateiauswahl im selben Browser/Teamkonto. Der bestehende private Speicher und vorhandene Dateien bleiben unverändert.
+
+**Aktueller Supabase Free-Tarif: maximal 50 MB pro Datei.** Dieses Limit ist im CRM der Standard. Den privaten Bucket kaiser-projects aktiviert ein Administrator einmalig über die Schaltfläche „Speicher aktivieren“.
+
+**Für echte 500 MB:** Supabase Pro aktivieren, unter Storage → Settings die globale Dateigrößengrenze auf mindestens 500 MB erhöhen. In Cloudflare Pages → Settings → Variables and Secrets (Production) die optionale Variable CRM_UPLOAD_LIMIT_MB auf 500 setzen und neu deployen. Der Code begrenzt das Maximum auf 500 MB.
+
+Das Supabase Secret bleibt serverseitig. Der Browser sieht nur ein kurzfristiges Upload-Ticket für die freigegebene Projektdatei. Ein abgebrochener TUS-Upload muss innerhalb seiner Gültigkeitsdauer (höchstens 24 Stunden) fortgesetzt werden; danach neu beginnen. Nach dem Deployment mit einem Testprojekt auf Desktop und Smartphone testen.
