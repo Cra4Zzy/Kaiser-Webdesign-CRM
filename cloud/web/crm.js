@@ -12,7 +12,7 @@ let mobilePipelineStage='all';
 let dashboardCategory='new';
 const KINDS={task:'Aufgabe',call:'Anruf',email:'E-Mail',meeting:'Termin',work:'Ausarbeitung'};
 const ACTIONS={call:'Anrufen',followup:'Nachfassen',build_page:'Angebotsseite bauen',send_page:'Angebotsseite senden',email:'E-Mail schreiben',whatsapp:'WhatsApp schreiben',offer:'Angebot senden',meeting:'Termin vereinbaren',other:'Nächster Schritt'};
-const PROJECTS={planning:'Geplant',active:'In Arbeit',review:'In Abstimmung',done:'Abgeschlossen',on_hold:'Pausiert'};
+const PROJECTS={planning:'Geplant',active:'In Arbeit',review:'In Abstimmung',done:'Abgeschlossen',on_hold:'Pausiert',archived:'Archiviert'};
 let data=null, route='', actor=Number(localStorage.getItem('kaiser.v9.actor')||1), scope='all', query='', filter='open', view='board', page=1, dialogSave=null, dialogRevision='', dialogDirty=false, loading=false;
 const money=n=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(n)||0);
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
@@ -212,8 +212,82 @@ function renderOverview(){
 }
 
 function renderCompany(id){
- const c=find('companies',id);if(!c)return blank('Firma nicht gefunden','Wähle eine Firma aus.');const ds=data.deals.filter(d=>d.company_id===c.id),cs=data.contacts.filter(t=>t.company_id===c.id),tasks=agenda().filter(a=>a.company_id===c.id&&a.status==='open'),completed=agenda().filter(a=>a.company_id===c.id&&a.status==='done'),available=ds.filter(nonWon),d=available.find(open)||available[0],next=tasks[0],status=companyStatus(c);let url='';try{const u=new URL(c.website.startsWith('http')?c.website:'https://'+c.website);if(['https:','http:'].includes(u.protocol)&&c.website)url=u.href}catch{};
- return `<header class="focus-company-head"><div class="focus-company-id"><span class="focus-monogram">${esc(initials(c.name))}</span><div><span class="eyebrow">FIRMA</span><h1>${esc(c.name)}</h1><p>${esc([c.industry,c.city].filter(Boolean).join(' · '))}</p></div></div>${button('Stammdaten bearbeiten','company-edit',c.id,'small')}</header><section class="company-workbar"><div><span class="eyebrow">AKTUELLER STATUS</span>${companyStatusBadge(c)}<h2>${next?esc(next.title):'Kein nächster Schritt geplant'}</h2>${next?due(next):'<p>Wenn ein weiterer Kontakt nötig ist, plane ihn hier.</p>'}</div><div class="actions">${c.do_not_contact?button('Kontakt freigeben','stop',c.id):button('Kontakt festhalten','conversation',c.id,'primary')}${button('+ Aufgabe','company-task',c.id)+button('Termin vereinbaren','appointment-new',c.id)}</div></section><div class="company-clear-grid"><aside class="clear-stack"><section class="panel clear-panel"><div class="panel-head"><h3>Kontaktdaten</h3></div>${definition([...contactLinks(c),['Website',url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(c.website)}</a>`:''],['Notizen',esc(c.notes)]])}<div class="panel-head compact-head"><h3>Ansprechpartner</h3>${button('+ Person','contact-company',c.id,'small')}</div>${cs.map(ct=>`<div class="person-card"><strong>${esc(ct.first_name+' '+ct.last_name)}</strong><small>${esc(ct.role)}</small>${definition(contactLinks(ct))}${button('Bearbeiten','contact-edit',ct.id,'small')}</div>`).join('')||'<div class="panel-body empty-copy">Keine Person hinterlegt.</div>'}</section><details class="panel clear-panel company-deals"><summary>Weitere Optionen</summary><div class="panel-body"><div class="actions">${!c.do_not_contact&&status!=='won'?button('Nachfassen','quick-followup',c.id,'small')+button('Kein Interesse','quick-no-interest',c.id,'small danger')+button('In Bearbeitung','quick-open',c.id,'small'):''}${button(c.do_not_contact?'Kontakt freigeben':'Kontaktstopp setzen','stop',c.id,'small danger')}</div><h3 class="section-gap">Angebote & Aufträge</h3>${ds.map(x=>`<div class="focus-deal"><a class="main-link" href="#deal/${x.id}">${esc(x.title)}</a>${stageBadge(x)}<strong>${money(x.value)}</strong>${button('Phase / Abschluss','stage',x.id,'small')}</div>`).join('')||'Noch kein Vorgang.'}${button('+ Angebot / Vorgang','deal-company',c.id,'small')}</div></details></aside><div class="clear-stack">${taskGroup('Offene Aufgaben',tasks,'Keine offenen Aufgaben.')}<section class="panel clear-panel"><div class="panel-head"><h3>Kontaktverlauf</h3>${button('+ Notiz','company-note',c.id,'small')}</div>${timeline(data.activities.filter(a=>a.company_id===c.id))}</section><details class="panel clear-panel company-deals"><summary>Erledigte Aufgaben (${completed.length})</summary>${taskGroup('Archiv',completed,'Noch keine erledigten Aufgaben.')}</details></div></div>`;
+ const c=find('companies',id);
+ if(!c)return blank('Firma nicht gefunden','Wähle eine Firma aus.');
+ const deals=data.deals.filter(d=>d.company_id===c.id),
+  openDeals=deals.filter(d=>d.disposition==='active'&&d.stage!=='won'),
+  wonDeals=deals.filter(d=>d.stage==='won'&&d.disposition==='active'),
+  persons=data.contacts.filter(p=>p.company_id===c.id),
+  projects=data.projects.filter(p=>p.company_id===c.id&&p.status!=='archived'),
+  appointments=data.appointments.filter(a=>a.company_id===c.id&&a.status==='planned')
+    .sort((a,b)=>(a.start_at||'').localeCompare(b.start_at||'')),
+  dueTasks=agenda().filter(a=>a.company_id===c.id&&a.status==='open'),
+  history=agenda().filter(a=>a.company_id===c.id&&a.status==='done'),
+  next=dueTasks[0];
+ let website='';try{if(c.website){const u=new URL(/^https?:/i.test(c.website)?c.website:'https://'+c.website);if(['https:','http:'].includes(u.protocol))website=u.href;}}catch{}
+ const totalWon=wonDeals.reduce((n,d)=>n+(Number(d.value)||0),0);
+ const highestPriority=openDeals.some(d=>d.priority==='high')?'Hoch':openDeals.some(d=>d.priority==='medium')?'Mittel':'Normal';
+ const actions='<div class="company-toolbar">'+
+  (c.do_not_contact?button('Kontakt freigeben','stop',c.id,'small'):
+  button('Kontakt festhalten','conversation',c.id,'primary')+
+  button('Als Bestandskunde übernehmen','customer-win',c.id,'small'))+
+  button('Termin','appointment-new',c.id,'small')+
+  button('+ Aufgabe','company-task',c.id,'small')+
+  button('Daten bearbeiten','company-edit',c.id,'small')+'</div>';
+ const detail=(label,value)=>'<div class="company-fact"><small>'+esc(label)+'</small><strong>'+value+'</strong></div>';
+ const cardProjects=projects.map(p=>
+  '<article class="company-project-line"><div><strong>'+esc(p.name)+'</strong><small>'+esc(SERVICE_TYPES[p.service_type]||'Projekt')+
+  ' · '+esc(PROJECTS[p.status]||p.status)+'</small></div><span class="company-project-money">'+money(p.value)+'</span><div class="company-project-cta">'+
+   button('Bearbeiten','project',p.id,'small')+button('Dateien','project-files',p.id,'small')+
+   button('Archivieren','project-archive',p.id,'small')+'</div></article>').join('');
+ const opportunities=deals.map(d=>'<div class="company-opportunity">'+
+  '<div><a href="#deal/'+d.id+'" class="company-opportunity-title">'+esc(d.title)+'</a>'+
+  '<small>'+esc(d.stage==='won'?'Auftrag gewonnen':PHASES[phase(d)]||d.stage)+'</small></div>'+
+  '<span>'+stageBadge(d)+'</span><strong>'+money(d.value)+'</strong>'+
+  '<div class="company-opportunity-actions">'+
+   (d.stage==='won'&&d.disposition==='active'?button('Zurück in Vertrieb','customer-reopen',d.id,'small'):
+    button('Status ändern','stage',d.id,'small'))+'</div></div>').join('');
+ const people=persons.map(p=>'<article class="company-person"><span class="company-person-avatar">'+
+  esc(initials(p.first_name+' '+p.last_name))+'</span><div class="company-person-text"><strong>'+esc((p.first_name+' '+p.last_name).trim())+
+  '</strong><small>'+esc(p.role||'Ansprechpartner')+'</small></div>'+
+  '<div class="company-person-actions">'+definition(contactLinks(p))+button('Bearbeiten','contact-edit',p.id,'small')+'</div></article>').join('');
+ return '<section class="company-focus-header"><div class="company-focus-top"><span class="company-identity">'+
+   '<span class="company-identity-mark">'+esc(initials(c.name))+'</span><span><small>UNTERNEHMENSAKTE</small><h1>'+esc(c.name)+
+   '</h1><span class="company-subline">'+esc([c.industry,c.city].filter(Boolean).join(' · '))+'</span></span></span>'+
+   '<span class="company-status-tag">'+companyStatusBadge(c)+'</span></div>'+actions+'</section>'+
+   '<div class="company-insight-strip">'+
+   detail('Auftragswert gewonnen',money(totalWon))+
+   detail('Vertriebsvorgänge',String(deals.length))+
+   detail('Aktive Projekte',String(projects.filter(p=>p.status!=='done').length))+
+   detail('Offene Aufgaben',String(dueTasks.length))+
+   '</div>'+
+   '<div class="company-workspace-grid"><div class="company-main-column">'+
+   '<section class="panel company-journey"><div class="company-section-heading"><span class="eyebrow">VERTRIEB & ZUSAMMENARBEIT</span><h2>Vorgänge und nächste Schritte</h2></div>'+
+   (c.do_not_contact?'<p class="company-warning">Kontaktstopp aktiv. Bitte keine neuen Akquiseaktionen durchführen.</p>':'')+
+   '<div class="company-next-line"><span>ALS NÄCHSTES</span><strong>'+esc(next?.title||'Noch keine Aufgabe geplant')+'</strong>'+
+   (next?'<small>'+esc(dateLabel(next.date))+'</small>':'')+
+   (next?button('Erledigt','complete',next.key,'small'):'')+'</div>'+
+   '<div class="company-opportunities">'+(opportunities||'<p class="company-empty">Noch keine Verkaufschance erfasst. Über „Als Bestandskunde übernehmen“ kannst du direkt einen Auftrag anlegen.</p>')+
+   '</div><div class="company-journey-actions">'+button('+ Angebot / Vorgang','deal-company',c.id,'small')+
+   (!c.do_not_contact?button('Nachfassen','quick-followup',c.id,'small')+button('Kein Interesse','quick-no-interest',c.id,'small'):'')+
+   '</div></section>'+
+   '<section class="panel company-projects"><div class="company-section-heading"><span class="eyebrow">PROJEKTMANAGEMENT</span><h2>Kundenprojekte</h2></div>'+
+   (cardProjects||'<p class="company-empty">Für dieses Unternehmen ist noch kein aktives Projekt hinterlegt.</p>')+'</section>'+
+   '<section class="panel company-activity"><div class="company-section-heading"><span class="eyebrow">DOKUMENTATION</span><h2>Kontaktverlauf</h2>'+
+   button('+ Notiz','company-note',c.id,'small')+'</div>'+timeline(data.activities.filter(a=>a.company_id===c.id))+'</section></div>'+
+   '<aside class="company-side-column"><section class="panel company-contact-panel"><div class="company-section-heading"><span class="eyebrow">STAMMDATEN</span><h2>Kontakt</h2></div>'+
+   definition([...contactLinks(c),['Website',website?'<a href="'+esc(website)+'" target="_blank" rel="noopener noreferrer">'+esc(c.website)+'</a>':'—']])+
+   (c.notes?'<p class="company-note-preview">'+esc(c.notes)+'</p>':'')+'</section>'+
+   '<section class="panel company-contact-panel"><div class="company-section-heading"><span class="eyebrow">KONTAKTPERSONEN</span><h2>Ansprechpartner</h2>'+
+   button('+ Person','contact-company',c.id,'small')+'</div>'+(people||'<p class="company-empty">Noch keine Kontaktperson hinterlegt.</p>')+'</section>'+
+   '<section class="panel company-contact-panel"><div class="company-section-heading"><span class="eyebrow">PLANUNG</span><h2>Termine</h2></div>'+
+   (appointments.slice(0,5).map(a=>'<div class="company-appointment"><strong>'+esc(a.title)+'</strong><small>'+esc(dateLabel(a.start_at))+
+    ' · '+esc(a.start_at?.slice(11,16)||'')+'</small><div>'+button('Bearbeiten','activity-edit','appointment:'+a.id,'small')+
+    button('Entfernen','appointment-archive',a.id,'small')+'</div></div>').join('')||'<p class="company-empty">Kein aktiver Termin.</p>')+
+   '<div class="company-section-footer">'+button('+ Termin vereinbaren','appointment-new',c.id,'small')+'</div></section>'+
+   '<section class="company-footer-controls"><span>Weitere Firmenaktionen</span>'+
+   button(c.do_not_contact?'Kontaktstopp aufheben':'Kontaktstopp setzen','stop',c.id,'small danger')+
+   '<details><summary>Aufgabenarchiv ('+history.length+')</summary>'+taskGroup('Erledigt',history,'Noch kein Abschluss.')+'</details></section></aside></div>';
 }
 function renderAppointments(){
  const all=agenda().filter(a=>a.source==='appointment'&&inScope(a)&&matches(a.title,company(a.company_id).name));
