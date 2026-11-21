@@ -226,8 +226,27 @@ function renderSpecial(status){
  return head(title,sub,'','KUNDENSTATUS')+toolbar('Firma suchen …')+paginate(firms,c=>`<tr><td><a class="main-link" href="#company/${c.id}">${esc(c.name)}</a><small>${esc(c.city||'')}</small></td><td>${companyStatusBadge(c)}</td><td>${esc(c.phone||c.email||'—')}</td><td><a class="button small" href="#company/${c.id}">Akte öffnen</a></td></tr>`,'<thead><tr><th>Unternehmen</th><th>Status</th><th>Kontakt</th><th></th></tr></thead>');
 }
 function renderClients(){
- const clients=data.projects.filter(p=>matches(p.name,company(p.company_id).name)),won=data.deals.filter(d=>d.stage==='won'&&d.disposition==='active'),all=clients.filter(p=>!['done','active'].includes(filter)||filter==='done'&&p.status==='done'||filter==='active'&&p.status!=='done');
- return head('Bestandskunden','Gewonnene Aufträge, laufende Zusammenarbeit und abgeschlossene Kundenprojekte.','','KUNDENBETREUUNG')+tabs([['all','Alle Kunden',clients.length],['active','Laufende Projekte',clients.filter(p=>p.status!=='done').length],['done','Abgeschlossene Projekte',clients.filter(p=>p.status==='done').length]])+toolbar('Kunde oder Projekt suchen …')+paginate(all,p=>`<tr><td><a class="main-link" href="#company/${p.company_id}">${esc(company(p.company_id).name)}</a><small>${esc(p.name)}</small></td><td>${esc(SERVICE_TYPES[p.service_type]||'Projekt')}</td><td>${badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')}</td><td>${button('Projekt bearbeiten','project',p.id,'small')}${button('Dateien','project-files',p.id,'small')}</td></tr>`,'<thead><tr><th>Kunde</th><th>Leistung</th><th>Projektstatus</th><th></th></tr></thead>')+`<p class="muted client-hint">${won.length} gewonnene Verkaufschancen insgesamt.</p>`;
+ const won=data.deals.filter(d=>d.stage==='won'&&d.disposition==='active');
+ const allProjects=data.projects.filter(p=>matches(p.name,company(p.company_id).name));
+ const visible=allProjects.filter(p=>filter==='done'?p.status==='done':filter==='active'?p.status!=='done':true);
+ const projectValue=p=>{const n=Number(p.value);return Number.isFinite(n)?n:Number(data.deals.find(d=>d.id===p.deal_id)?.value)||0};
+ const sum=rows=>rows.reduce((total,p)=>total+projectValue(p),0);
+ const wonValue=won.reduce((total,d)=>total+(Number(d.value)||0),0);
+ const completed=allProjects.filter(p=>p.status==='done'),ongoing=allProjects.filter(p=>p.status!=='done');
+ return head('Bestandskunden','Gewonnene Aufträge, Projektwerte und abgeschlossene Kundenarbeiten – übersichtlich an einem Ort.','','KUNDENBETREUUNG')+
+ '<section class="client-revenue-grid" aria-label="Auftragswerte">'+
+ '<div class="client-revenue-card"><span>Gewonnene Aufträge</span><strong>'+money(wonValue)+'</strong><small>'+won.length+' angenommene Verkaufschancen</small></div>'+
+ '<div class="client-revenue-card"><span>Abgeschlossene Projekte</span><strong>'+money(sum(completed))+'</strong><small>'+completed.length+' Projekte abgeschlossen</small></div>'+
+ '<div class="client-revenue-card"><span>Laufende Projekte</span><strong>'+money(sum(ongoing))+'</strong><small>'+ongoing.length+' Projekte noch offen</small></div></section>'+
+ tabs([['all','Alle Kunden',allProjects.length],['active','Laufende Projekte',ongoing.length],['done','Abgeschlossene Projekte',completed.length]])+
+ toolbar('Kunde oder Projekt suchen …')+
+ paginate(visible,p=>'<tr><td><a class="main-link" href="#company/'+p.company_id+'">'+esc(company(p.company_id).name)+'</a><small>'+esc(p.name)+'</small></td>'+
+ '<td>'+esc(SERVICE_TYPES[p.service_type]||'Projekt')+'</td>'+
+ '<td>'+badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')+'</td>'+
+ '<td class="client-price-cell">'+money(projectValue(p))+'</td>'+
+ '<td><div class="actions">'+button('Projekt','project',p.id,'small')+button('Dateien','project-files',p.id,'small')+'</div></td></tr>',
+ '<thead><tr><th>Kunde / Auftrag</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Aktionen</th></tr></thead>')+
+ '<p class="muted client-hint">Die Werte sind gespeicherte Auftrags- beziehungsweise Projektwerte, keine bestätigten Zahlungseingänge. Gewonnene Verkaufschancen und Projekte werden nicht addiert, um Doppelzählungen zu vermeiden.</p>';
 }
 function pipelineFollowupEditor(id){
  const d=find('deals',id),base=new Date(today()+'T12:00:00Z');base.setUTCDate(base.getUTCDate()+3);
