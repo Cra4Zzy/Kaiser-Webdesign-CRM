@@ -3,7 +3,7 @@ const BUCKET='kaiser-projects';
 const MAX_UPLOAD=8*1024*1024;
 const answer=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const denied=(status,message)=>Object.assign(new Error(message),{status});
-const cleanName=name=>{let s=String(name||'datei').normalize('NFKD').replace(/[^\\x20-\\x7E]/g,'').replace(/[^A-Za-z0-9._-]/g,'-').replace(/^-+/,'').slice(-92);return !s||s==='.'||s==='..'?'datei':s};
+const cleanName=name=>{let s=String(name||'datei').normalize('NFKD').replace(/[^\x20-\x7E]/g,'').replace(/[^A-Za-z0-9._-]/g,'-').replace(/^-+/,'').slice(-92);return !s||s==='.'||s==='..'?'datei':s};
 const folder=id=>String(id)+'/';
 function credentials(c){return {apikey:c.secret,Authorization:'Bearer '+c.secret}}
 async function storage(c,path,{method='GET',body,headers={}}={}){
@@ -12,7 +12,7 @@ async function storage(c,path,{method='GET',body,headers={}}={}){
  return res;
 }
 const projectId=value=>{const id=Number(value);if(!Number.isSafeInteger(id)||id<=0)throw denied(400,'Ungültige Projekt-ID.');return id};
-function validPath(p,id){p=String(p||'');if(p.length>180||!p.startsWith(folder(id))||!/^\\d+\\/[A-Za-z0-9._-]+$/.test(p))throw denied(400,'Ungültiger Dateipfad.');return p}
+function validPath(p,id){p=String(p||'');if(p.length>180||!p.startsWith(folder(id))||!/^\d+\/[A-Za-z0-9._-]+$/.test(p))throw denied(400,'Ungültiger Dateipfad.');return p}
 const fileKey=path=>path.split('/').map(encodeURIComponent).join('/');
 function belongs(projects,id){if(!projects.some(p=>p.id===id))throw denied(404,'Projekt nicht gefunden.')}
 export async function handleProjectFiles({req,c,session,projects}){
