@@ -139,6 +139,100 @@ function renderProjects(){
      button('Dateien','project-files',p.id,'small')+button('Archivieren','project-archive',p.id,'small'))+'</div></td></tr>',
   '<thead><tr><th>Projekt / Unternehmen</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Termin</th><th>Aktionen</th></tr></thead>');
 }
+const DASHBOARD_GROUPS=[
+ {key:'new',label:'Neue Leads',tone:'#a9bac1'},
+ {key:'contacted',label:'Kontaktaufnahme',tone:'#7a9ea8'},
+ {key:'interest',label:'Interesse',tone:'#4f9680'},
+ {key:'offer_email',label:'E-Mail-Angebote',tone:'#9183b5'},
+ {key:'offer_demo',label:'Angebotsdemos',tone:'#786ab0'},
+ {key:'followup',label:'Nachfassen',tone:'#d19b65'},
+ {key:'won',label:'Bestandskunden',tone:'#348170'},
+ {key:'no_interest',label:'Kein Interesse',tone:'#c7a49d'},
+ {key:'stopped',label:'Kontaktstopp',tone:'#88949d'},
+ {key:'lost',label:'Sonstige Abschlüsse',tone:'#bbc4cc'}
+];
+function dashboardGroupForDeal(d){
+ if(blocked(d))return 'stopped';
+ if(d.disposition==='no_interest')return 'no_interest';
+ if(d.disposition!=='active')return 'lost';
+ if(d.stage==='won')return 'won';
+ const key=phase(d);
+ return ['new','contacted','interest','offer_email','offer_demo','followup'].includes(key)?key:'interest';
+}
+function dashboardDetails(key){
+ const g=DASHBOARD_GROUPS.find(x=>x.key===key)||DASHBOARD_GROUPS[0];
+ const rows=data.deals.filter(d=>dashboardGroupForDeal(d)===g.key)
+  .sort((a,b)=>({high:0,medium:1,low:2}[a.priority||'medium']??1)-({high:0,medium:1,low:2}[b.priority||'medium']??1)
+   ||String(a.next_follow_up||'9999').localeCompare(String(b.next_follow_up||'9999'))
+   ||company(a.company_id).name.localeCompare(company(b.company_id).name,'de'));
+ return '<div class="dashboard-detail-head"><div class="dashboard-detail-heading"><i style="background:'+g.tone+'"></i><div><span class="eyebrow">DETAILANSICHT · LIVE</span><h3>'+esc(g.label)+'</h3></div></div><span class="dashboard-detail-total">'+rows.length+' '+(rows.length===1?'Vorgang':'Vorgänge')+'</span></div>'+
+  (rows.length?
+   '<div class="dashboard-detail-rows">'+rows.map(d=>{
+    const c=company(d.company_id),next=d.next_follow_up?'<span class="dashboard-detail-date">Nächster Schritt: '+esc(dateLabel(d.next_follow_up))+'</span>':'';
+    const priority=d.priority==='high'?'<span class="dashboard-detail-priority">Hohe Priorität</span>':'';
+    return '<div class="dashboard-detail-row"><div class="dashboard-detail-copy"><a href="#company/'+d.company_id+'" class="dashboard-detail-name">'+esc(c.name)+'</a><small>'+esc(d.title||'Kundenkontakt')+'</small></div><div class="dashboard-detail-extra">'+priority+next+'</div><a class="dashboard-detail-open" href="#company/'+d.company_id+'" aria-label="Firmenakte öffnen: '+esc(c.name)+'">Öffnen</a></div>';
+   }).join('')+'</div>':
+   '<div class="dashboard-detail-empty">Hier gibt es gerade keine Vorgänge. Wähle eine andere Kategorie im Kreisdiagramm.</div>');
+}
+function selectDashboardCategory(key){
+ if(!DASHBOARD_GROUPS.some(g=>g.key===key))return;
+ dashboardCategory=key;
+ const box=$('#dashboardSelection');
+ if(!box)return;
+ box.innerHTML=dashboardDetails(key);
+ box.classList.remove('dashboard-detail-reveal');
+ void box.offsetWidth;
+ box.classList.add('dashboard-detail-reveal');
+ $$('[data-action="dashboard-category"]').forEach(b=>{
+  const selected=b.dataset.id===key;
+  b.classList.toggle('selected',selected);
+  b.setAttribute('aria-pressed',selected?'true':'false');
+ });
+}
+function renderOverview(){
+ const items=agenda(),dueNow=items.filter(a=>a.status==='open'&&a.date&&a.date<=today()),
+ calls=items.filter(a=>a.status==='open'&&a.kind==='call'),
+ fresh=data.deals.filter(d=>d.disposition==='active'&&['new','attempted','contacted'].includes(d.stage)).length;
+ const groups=DASHBOARD_GROUPS.map(g=>({...g,count:data.deals.filter(d=>dashboardGroupForDeal(d)===g.key).length}));
+ const total=data.deals.length,circumference=2*Math.PI*74;
+ let offset=0;
+ const slices=groups.map(g=>{
+  const dash=total?g.count/total*circumference:0;
+  if(!g.count)return '';
+  const selected=dashboardCategory===g.key;
+  const html='<circle class="donut-arc'+(selected?' selected':'')+'" r="74" cx="100" cy="100" fill="none" stroke="'+g.tone+
+    '" stroke-width="19" stroke-dasharray="'+dash.toFixed(3)+' '+(circumference-dash).toFixed(3)+'" stroke-dashoffset="'+(-offset).toFixed(3)+
+    '" transform="rotate(-90 100 100)" role="button" tabindex="0" aria-pressed="'+selected+'" aria-label="'+esc(g.label)+': '+g.count+
+    '" data-action="dashboard-category" data-id="'+g.key+'"><title>'+esc(g.label)+' · '+g.count+'</title></circle>';
+  offset+=dash;return html;
+ }).join('');
+ const legend=groups.map(g=>'<button type="button" class="donut-legend-item'+(dashboardCategory===g.key?' selected':'')+
+  '" data-action="dashboard-category" data-id="'+g.key+'" aria-pressed="'+(dashboardCategory===g.key)+
+  '"><i style="background:'+g.tone+'"></i><span>'+esc(g.label)+'</span><strong>'+g.count+'</strong></button>').join('');
+ const tasks=dueNow.slice(0,4).map(a=>'<div class="dashboard-todo-item"><span class="dashboard-todo-icon">'+icon(a.kind)+'</span>'+
+  '<div class="dashboard-todo-label"><a href="#'+(a.company_id?'company/'+a.company_id:'activities')+'">'+esc(a.title)+'</a>'+
+  '<small>'+esc(a.company_id?company(a.company_id).name:'Allgemeine Aufgabe')+' · '+esc(dateLabel(a.date))+'</small></div>'+
+  '<button type="button" class="dashboard-todo-done" data-action="complete" data-id="'+esc(a.key)+'">Erledigt</button></div>').join('');
+ return '<section class="dashboard-greeting"><div><span class="eyebrow">KAISER WEBDESIGN · SALES WORKSPACE</span><h1>Dein Überblick.</h1><p>'+
+  new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+
+  ' · Alle Vorgänge. Ein klarer nächster Schritt.</p></div><a href="#sales" class="button primary">Zur Lead-Pipeline</a></section>'+
+  '<div class="dashboard-kpis"><button data-action="go-today"><small>Jetzt fällig</small><strong>'+dueNow.length+
+  '</strong><span>Aufgaben & Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Kontaktversuche</small><strong>'+fresh+
+  '</strong><span>Offene Erstkontakte</span></button><button data-action="go-planned"><small>Anrufe offen</small><strong>'+calls.length+
+  '</strong><span>Geplante Gespräche</span></button><button data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>'+
+  (groups.find(g=>g.key==='won')?.count||0)+'</strong><span>Bestandskunden</span></button></div>'+
+  '<section class="panel dashboard-chart dashboard-chart-full"><div class="dashboard-section-head"><div><span class="eyebrow">VERTRIEBSÜBERSICHT</span>'+
+  '<h2>Wo stehen eure Leads?</h2><p>Wähle eine Kategorie. Die Details erscheinen direkt darunter – ohne Seitenwechsel.</p></div></div>'+
+  '<div class="donut-layout"><div class="donut-visual"><svg viewBox="0 0 200 200" role="group" aria-label="Leadstatus als interaktives Kreisdiagramm">'+
+  '<circle class="donut-track" cx="100" cy="100" r="74" fill="none" stroke="#edf1f3" stroke-width="19"/>'+slices+'</svg>'+
+  '<div class="donut-center"><strong>'+total+'</strong><span>Vorgänge</span></div></div><div class="donut-legend">'+legend+'</div></div>'+
+  '<section id="dashboardSelection" class="dashboard-selection" aria-live="polite">'+dashboardDetails(dashboardCategory)+'</section></section>'+
+  '<section class="dashboard-todo-panel panel"><div class="dashboard-todo-header"><div><span class="eyebrow">DEIN WORKFLOW</span>'+
+  '<h2>To-do <span>'+dueNow.length+' fällig</span></h2></div><a href="#activities">Alle Aufgaben ansehen</a></div>'+
+  '<div class="dashboard-todo-list">'+(tasks||'<p class="dashboard-todo-empty">Keine Aufgaben für heute offen.</p>')+'</div>'+
+  (dueNow.length>4?'<p class="dashboard-todo-overflow">+'+(dueNow.length-4)+' weitere fällige Aufgaben in der Aufgabenübersicht</p>':'')+'</section>';
+}
+
 function renderCompany(id){
  const c=find('companies',id);
  if(!c)return blank('Firma nicht gefunden','Wähle eine Firma aus.');
