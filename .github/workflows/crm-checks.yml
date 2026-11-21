@@ -1,0 +1,27 @@
+name: CRM checks
+on:
+  push:
+    branches:
+      - feature/pipeline-mobile-2026
+  pull_request:
+    branches:
+      - main
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check pages/commands.mjs
+          node --check pages/project-files.mjs
+          node --check cloud/web/crm.js
+          node --check 'functions/api/[[path]].js'
+      - name: Backend behavior tests
+        run: node --test pages/tests/backend.test.mjs
