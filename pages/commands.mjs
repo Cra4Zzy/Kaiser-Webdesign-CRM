@@ -69,6 +69,7 @@ export function command(snapshot,actor,p,now=new Date()){
   const match=/^(task|appointment|followup):([1-9]\d*)$/.exec(txt(v.target));
   if(!match)fail('Ungültige Aufgabe.');
   const source=match[1],record=source==='followup'?get('deals',match[2]):get(source==='task'?'tasks':'appointments',match[2]);
+  const oldFollowup=source==='followup'?{...record}:null;
   if(source==='followup'?!record.next_follow_up||record.stage==='won'||record.disposition!=='active':
     record.status!==(source==='task'?'open':'planned'))fail('Dieser Vorgang wurde bereits abgeschlossen.');
   const work=choice(v.work_kind,['call','email','meeting','offer','demo','work','other'],'Erledigte Tätigkeit');
@@ -118,9 +119,9 @@ export function command(snapshot,actor,p,now=new Date()){
   else if(source==='appointment')upd('appointments',record.id,{status:'done'});
   else{
    // Record the completed callback before replacing it with a new follow-up.
-   add('tasks',{title:record.next_action==='call'?'Rückruf erledigt':'Wiedervorlage erledigt',
-     kind:'call',status:'done',due_date:record.next_follow_up,
-     due_time:record.next_follow_up_time||'',company_id:cid,deal_id:record.id,
+   add('tasks',{title:oldFollowup.next_action==='call'?'Rückruf erledigt':'Wiedervorlage erledigt',
+     kind:'call',status:'done',due_date:oldFollowup.next_follow_up,
+     due_time:oldFollowup.next_follow_up_time||'',company_id:cid,deal_id:record.id,
      owner_id:record.owner_id??null,notes:result});
    if(status==='keep')upd('deals',record.id,cleared);
   }
