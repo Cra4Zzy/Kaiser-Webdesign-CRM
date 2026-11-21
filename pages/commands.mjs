@@ -192,6 +192,14 @@ export function command(snapshot,actor,p,now=new Date()){
   log('Projekt wiederhergestellt','Projekt zunächst pausiert, Status bitte prüfen.',deal(project.deal_id),project.company_id,'edit',{project_id:id});
   break;
  }
+ case 'appointment_cancel':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Absage bestätigen.');
+  const a=get('appointments',id);
+  if(a.status!=='planned')fail('Der Termin ist nicht mehr geplant.');
+  upd('appointments',id,{status:'cancelled'});
+  log('Termin abgesagt',txt(v.reason)||a.title,deal(a.deal_id),a.company_id,'edit',{appointment_id:id});
+  break;
+ }
  case 'appointment_archive':{
   if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Entfernung bestätigen.');
   const appointment=get('appointments',id);
