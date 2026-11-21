@@ -150,7 +150,7 @@ export function command(snapshot,actor,p,now=new Date()){
   let d;
   if(v.deal_id){d=get('deals',v.deal_id);if(d.company_id!==cid||d.stage==='won')fail('Ungültige Verkaufschance für diesen Kunden.');}
   else if(all.length===1)d=all[0];
-  else if(!all.length)d=newDeal(cid);
+  else if(!all.length){if(s.deals.some(x=>x.company_id===cid&&x.stage==='won'&&x.disposition==='active'))fail('Bereits Bestandskunde. Für einen weiteren Auftrag zuerst eine neue Verkaufschance anlegen.');d=newDeal(cid);}
   else fail('Bitte die passende Verkaufschance auswählen.');
   const service=choice(v.service_type||'website',['website','app','social_media','mixed'],'Leistung');
   const amount=cash(v.value??d.value??0);
