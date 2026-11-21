@@ -252,7 +252,7 @@ function renderCompany(id){
  const actions='<div class="company-toolbar">'+
   (c.do_not_contact?button('Kontakt freigeben','stop',c.id,'small'):
   button('Kontakt festhalten','conversation',c.id,'primary')+
-  button('Als Bestandskunde übernehmen','customer-win',c.id,'small'))+
+  (openDeals.length||!wonDeals.length?button('Als Bestandskunde übernehmen','customer-win',c.id,'small'):''))+
   button('Termin','appointment-new',c.id,'small')+
   button('+ Aufgabe','company-task',c.id,'small')+
   button('Daten bearbeiten','company-edit',c.id,'small')+'</div>';
