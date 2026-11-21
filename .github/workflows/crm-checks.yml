@@ -22,6 +22,7 @@ jobs:
           node --check pages/commands.mjs
           node --check pages/project-files.mjs
           node --check cloud/web/crm.js
+          node --check cloud/web/resumable-upload.mjs
           node --check 'functions/api/[[path]].js'
       - name: Backend behavior tests
-        run: node --test pages/tests/backend.test.mjs
+        run: node --test pages/tests/*.test.mjs
