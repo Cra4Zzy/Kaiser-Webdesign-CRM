@@ -9,9 +9,10 @@ const PHASES={new:'Neu',contacted:'Kontaktversuch',interest:'Interesse',offer_em
 const PHASE_COLORS=['#a4b5c2','#81a5ad','#5d9a84','#8d82c2','#796aba','#d79b68'];
 const SERVICE_TYPES={other:'Noch zuordnen',website:'Website',app:'App',social_media:'Social Media',mixed:'Kombination'};
 let mobilePipelineStage='all';
+let dashboardCategory='new';
 const KINDS={task:'Aufgabe',call:'Anruf',email:'E-Mail',meeting:'Termin',work:'Ausarbeitung'};
 const ACTIONS={call:'Anrufen',followup:'Nachfassen',build_page:'Angebotsseite bauen',send_page:'Angebotsseite senden',email:'E-Mail schreiben',whatsapp:'WhatsApp schreiben',offer:'Angebot senden',meeting:'Termin vereinbaren',other:'Nächster Schritt'};
-const PROJECTS={planning:'Geplant',active:'In Arbeit',review:'In Abstimmung',done:'Abgeschlossen',on_hold:'Pausiert'};
+const PROJECTS={planning:'Geplant',active:'In Arbeit',review:'In Abstimmung',done:'Abgeschlossen',on_hold:'Pausiert',archived:'Archiviert'};
 let data=null, route='', actor=Number(localStorage.getItem('kaiser.v9.actor')||1), scope='all', query='', filter='open', view='board', page=1, dialogSave=null, dialogRevision='', dialogDirty=false, loading=false;
 const money=n=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(n)||0);
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
@@ -30,7 +31,22 @@ const STATUS_LABELS={none:'Noch nicht bearbeitet',open:'In der Pipeline',followu
 const companyStatusBadge=c=>{const k=companyStatus(c);return `<span class="status-pill status-${k}"><i></i>${STATUS_LABELS[k]}</span>`};
 const firmNext=c=>agenda().find(a=>a.company_id===c.id&&a.status==='open');
 const nextLabel=c=>{const a=firmNext(c);return a?`<strong>${esc(a.title)}</strong><small>${due(a)}</small>`:['open','followup'].includes(companyStatus(c))?'<span class="needs-plan">Noch nicht geplant</span>':'<span class="muted">—</span>'};
-const taskGroup=(label,rows,empty)=>`<section class="panel clear-panel"><div class="panel-head"><h3>${label} <span class="tab-count">${rows.length}</span></h3></div>${rows.map(a=>`<div class="clear-task ${a.status==='done'?'completed-task':''}"><div class="task-icon">${icon(a.kind)}</div><div class="task-copy"><button class="row-button main-link" data-action="activity-edit" data-id="${a.key}">${esc(a.title)}</button><small>${a.company_id?`<a class="firm-link" href="#company/${a.company_id}">${esc(company(a.company_id).name)}</a>`:'Allgemein'}</small></div><div class="task-date">${a.status==='done'?`<span class="muted">Erledigt ${esc(stamp(a.updated_at))}</span>`:due(a)}</div>${a.status==='open'?`<div class="task-actions">${a.company_id&&!company(a.company_id).do_not_contact&&['call','email','meeting'].includes(a.kind)?button('Kontakt festhalten','task-contact',a.key,'small primary'):''}${button('Erledigen','complete',a.key,'small')}</div>`:a.status==='done'?button('Wieder öffnen','reopen',a.key,'small'):badge('Abgesagt')}</div>`).join('')||`<div class="panel-body empty-copy">${esc(empty)}</div>`}</section>`;
+const taskGroup=(label,rows,empty)=>'<section class="panel clear-panel"><div class="panel-head"><h3>'+esc(label)+' <span class="tab-count">'+rows.length+'</span></h3></div>'+
+ rows.map(a=>{
+  const isAppointment=a.source==='appointment';
+  const controls=a.status==='open'?
+    '<div class="task-actions">'+button('Erledigt','complete',a.key,'small')+
+    (isAppointment?button('Absagen','appointment-cancel',a.id,'small')+
+    button('Entfernen','appointment-archive',a.id,'small'):'')+'</div>':
+    a.status==='archived'&&isAppointment?button('Wiederherstellen','appointment-restore',a.id,'small'):
+    a.status==='done'?(button('Wieder öffnen','reopen',a.key,'small')+(isAppointment?button('Entfernen','appointment-archive',a.id,'small'):'')):
+    isAppointment?button('Entfernen','appointment-archive',a.id,'small'):badge('Abgesagt');
+  return '<div class="clear-task '+(a.status==='done'?'completed-task':'')+'"><div class="task-icon">'+icon(a.kind)+
+   '</div><div class="task-copy"><button class="row-button main-link" data-action="activity-edit" data-id="'+a.key+'">'+esc(a.title)+
+   '</button><small>'+(a.company_id?'<a class="firm-link" href="#company/'+a.company_id+'">'+esc(company(a.company_id).name)+'</a>':'Allgemein')+'</small></div>'+
+   '<div class="task-date">'+(a.status==='done'?'<span class="muted">Erledigt '+esc(stamp(a.updated_at))+'</span>':due(a))+'</div>'+
+   controls+'</div>';
+ }).join('')+(rows.length?'':'<div class="panel-body empty-copy">'+esc(empty)+'</div>')+'</section>';
 const blocked=d=>Boolean(d.do_not_contact||company(d.company_id).do_not_contact);
 const inScope=r=>scope==='all'||scope==='none'?!((scope==='none')&&r.owner_id):r.owner_id===Number(scope==='mine'?actor:scope);
 const matches=(...v)=>v.join(' ').toLocaleLowerCase('de').includes(query.toLocaleLowerCase('de'));
@@ -101,53 +117,211 @@ function renderContacts(){
 function timeline(rows){return `<div class="timeline">${rows.filter(a=>!a.undone_at).sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)||b.id-a.id).slice(0,100).map(a=>{let m={};try{m=JSON.parse(a.metadata)}catch{}return `<article class="timeline-item"><span class="task-icon">${icon(a.type)}</span><div class="timeline-copy"><header><strong>${esc(a.subject)}</strong><small>${stamp(a.occurred_at)}</small></header><small>${esc(m.actor_name||'Bestehender Verlauf · ohne Teamzuordnung')}</small>${a.body?`<p>${esc(a.body)}</p>`:''}</div></article>`}).join('')||blank('Noch kein Verlauf','Notizen und protokollierte Aktivitäten erscheinen hier.')} ${rows.length>100?'<p class="quiet-note">Die letzten 100 Einträge werden angezeigt. Der vollständige Verlauf bleibt im Backup erhalten.</p>':''}</div>`}
 function definition(items){return `<dl class="detail-fields">${items.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${value||'<span class="muted">Nicht hinterlegt</span>'}</dd></div>`).join('')}</dl>`}
 function contactLinks(c){const tel=String(c.phone||'').replace(/[^+\d]/g,'');const email=String(c.email||'');return [['Telefon',tel?`<a href="tel:${tel}">${esc(c.phone)}</a>`:''],['E-Mail',email?`<a href="mailto:${esc(encodeURIComponent(email))}">${esc(email)}</a>`:'']]}
-function renderDeal(id){const d=find('deals',id);if(!d)return blank('Verkaufschance nicht gefunden','Öffne einen vorhandenen Vorgang im Vertrieb.');const c=company(d.company_id),ct=find('contacts',d.contact_id),steps=pending(d),pi=Object.keys(PHASES).indexOf(phase(d));return `<section class="page-head"><div><span class="eyebrow">VERKAUFSCHANCE</span><div class="detail-heading"><h1>${esc(d.title)}</h1></div><div class="detail-sub"><a class="text-link" href="#company/${c.id}">${esc(c.name)}</a><span>·</span>${stageBadge(d)}</div></div><div class="actions">${button('Stammdaten bearbeiten','deal-edit',d.id)}${button('Phase / Abschluss','stage',d.id,'primary')}</div></section>${blocked(d)?'<div class="notice">Kontaktstopp für dieses Unternehmen. Prüfe bestehende Aktivitäten vor einer Kontaktaufnahme. Interne Notizen bleiben möglich.</div>':''}<div class="detail-layout"><div><section class="panel"><div class="panel-head"><h3>Verkaufsfortschritt</h3><strong>${money(d.value)}</strong></div><div class="stage-track">${Object.entries(PHASES).map(([k,l],i)=>`<div class="stage-step ${d.stage==='won'||i<pi?'passed':''} ${i===pi?'current':''}">${l}</div>`).join('')}</div><div class="detail-actions">${button('Gespräch / Aktivität erfassen','log',d.id,'primary')}${button('Notiz hinzufügen','note',d.id)}${button('+ Aufgabe planen','task-for',d.id)}</div></section><section class="panel section-gap"><div class="panel-head"><div><h3>Nächste Aktivitäten <span class="tab-count">${steps.length}</span></h3><p>Planung ist unabhängig von der Verkaufsphase.</p></div></div>${steps.map(taskRow).join('')||blank('Nächsten Schritt festlegen','Plane eine Aktivität mit Datum und Zuständigkeit.')}</section><section class="panel section-gap"><div class="panel-head"><h3>Verlauf</h3><span class="quiet-note">Neueste zuerst</span></div>${timeline(data.activities.filter(a=>a.deal_id===d.id))}</section></div><aside><section class="panel"><div class="panel-head"><h3>Auf einen Blick</h3></div>${definition([['Verantwortlich',owner(d.owner_id)],['Auftragswert',money(d.value)],['Bedarf / Ziel',esc(d.need_summary)],['Verlustgrund',esc(d.lost_reason)],['Angelegt',dateLabel(d.created_at)]])}</section><section class="panel section-gap"><div class="panel-head"><h3>${ct?'Ansprechpartner':'Unternehmen'}</h3><a class="text-link" href="#company/${c.id}">Akte öffnen</a></div>${definition([['Name',esc(ct?[ct.first_name,ct.last_name].join(' '):c.name)],...contactLinks(ct||c)])}</section>${d.notes?`<section class="panel section-gap"><div class="panel-head"><h3>Bestehende Notizen</h3></div>${definition([['Aus V8 übernommen',esc(d.notes)]])}</section>`:''}</aside></div>`}
+function renderDeal(id){const d=find('deals',id);if(!d)return blank('Verkaufschance nicht gefunden','Öffne einen vorhandenen Vorgang im Vertrieb.');const c=company(d.company_id),ct=find('contacts',d.contact_id),steps=pending(d),pi=Object.keys(PHASES).indexOf(phase(d));return `<section class="page-head"><div><span class="eyebrow">VERKAUFSCHANCE</span><div class="detail-heading"><h1>${esc(d.title)}</h1></div><div class="detail-sub"><a class="text-link" href="#company/${c.id}">${esc(c.name)}</a><span>·</span>${stageBadge(d)}</div></div><div class="actions">${button('Stammdaten bearbeiten','deal-edit',d.id)}${(d.stage==='won'&&d.disposition==='active'?button('Zurück in Vertrieb','customer-reopen',d.id,'primary'):button('Phase / Abschluss','stage',d.id,'primary'))}</div></section>${blocked(d)?'<div class="notice">Kontaktstopp für dieses Unternehmen. Prüfe bestehende Aktivitäten vor einer Kontaktaufnahme. Interne Notizen bleiben möglich.</div>':''}<div class="detail-layout"><div><section class="panel"><div class="panel-head"><h3>Verkaufsfortschritt</h3><strong>${money(d.value)}</strong></div><div class="stage-track">${Object.entries(PHASES).map(([k,l],i)=>`<div class="stage-step ${d.stage==='won'||i<pi?'passed':''} ${i===pi?'current':''}">${l}</div>`).join('')}</div><div class="detail-actions">${button('Gespräch / Aktivität erfassen','log',d.id,'primary')}${button('Notiz hinzufügen','note',d.id)}${button('+ Aufgabe planen','task-for',d.id)}</div></section><section class="panel section-gap"><div class="panel-head"><div><h3>Nächste Aktivitäten <span class="tab-count">${steps.length}</span></h3><p>Planung ist unabhängig von der Verkaufsphase.</p></div></div>${steps.map(taskRow).join('')||blank('Nächsten Schritt festlegen','Plane eine Aktivität mit Datum und Zuständigkeit.')}</section><section class="panel section-gap"><div class="panel-head"><h3>Verlauf</h3><span class="quiet-note">Neueste zuerst</span></div>${timeline(data.activities.filter(a=>a.deal_id===d.id))}</section></div><aside><section class="panel"><div class="panel-head"><h3>Auf einen Blick</h3></div>${definition([['Verantwortlich',owner(d.owner_id)],['Auftragswert',money(d.value)],['Bedarf / Ziel',esc(d.need_summary)],['Verlustgrund',esc(d.lost_reason)],['Angelegt',dateLabel(d.created_at)]])}</section><section class="panel section-gap"><div class="panel-head"><h3>${ct?'Ansprechpartner':'Unternehmen'}</h3><a class="text-link" href="#company/${c.id}">Akte öffnen</a></div>${definition([['Name',esc(ct?[ct.first_name,ct.last_name].join(' '):c.name)],...contactLinks(ct||c)])}</section>${d.notes?`<section class="panel section-gap"><div class="panel-head"><h3>Bestehende Notizen</h3></div>${definition([['Aus V8 übernommen',esc(d.notes)]])}</section>`:''}</aside></div>`}
 function companyQuick(c,ds,tasks){const available=ds.filter(nonWon),d=available.length===1?available[0]:null, next=tasks[0];return `<section class="company-quick"><div class="quick-main"><div class="quick-title"><span class="eyebrow">KUNDENSTATUS</span>${companyStatusBadge(c)}</div><div class="quick-contact">${contactLinks(c).filter(([k,v])=>v).map(([k,v])=>`<span>${v}</span>`).join('')||'<span class="muted">Keine Kontaktdaten hinterlegt</span>'}</div><div class="quick-next">${next?`<strong>${esc(next.title)}</strong> · ${due(next)}`:'Kein nächster Schritt geplant'}</div></div><div class="quick-actions">${available.length&&!c.do_not_contact?button('Nachfassen','quick-followup',c.id,'primary')+button('Kein Interesse','quick-no-interest',c.id,'danger')+button('Wieder offen','quick-open',c.id):''}${!ds.length?button('Anliegen anlegen','deal-company',c.id):''}${d?button('Phase / Abschluss','stage',d.id,'small'):''}</div></section>`}
 function quickStatusEditor(cid,status,preferred){const ds=data.deals.filter(d=>d.company_id===cid&&nonWon(d));if(!ds.length){const label={followup:'Nachfassen planen',no_interest:'Kein Interesse',open:'In Bearbeitung'}[status];return edit(label,(status==='followup'?field('Datum','due_date',today(),'date',false,true)+field('Uhrzeit · optional','due_time','','time'):'')+textarea('Notiz · optional','reason')+help('Der Status wird direkt bei der Firma gespeichert.'),v=>command('company_quick_status',cid,{...v,status},dialogRevision),label);}const selected=ds.find(d=>d.id===preferred)||ds.find(open)||ds[0],label={followup:'Nachfassen planen',no_interest:'Kein Interesse',open:'In Bearbeitung'}[status];edit(label,(ds.length===1?`<input type="hidden" name="deal_id" value="${selected.id}">`:selectField('Anliegen','deal_id',Object.fromEntries(ds.map(d=>[d.id,d.title])),selected.id,true))+(status==='followup'?field('Datum','due_date',selected.next_follow_up||today(),'date',false,true)+field('Uhrzeit · optional','due_time',selected.next_follow_up_time||'','time'):'')+textarea('Notiz · optional','reason')+help(status==='no_interest'?'Die Firma wird als Kein Interesse markiert. Alte Wiedervorlagen entfallen; selbst angelegte Aufgaben bleiben sichtbar.':'Der Status wird direkt gespeichert. Andere Anliegen der Firma bleiben unverändert.'),v=>command('quick_status',Number(v.deal_id),{...v,status},dialogRevision),label)}
 function renderCompanyLegacy(id){const c=find('companies',id);if(!c)return blank('Firma nicht gefunden','Wähle eine Firma unter Firmen & Kontakte.');const ds=data.deals.filter(d=>d.company_id===c.id),cs=data.contacts.filter(t=>t.company_id===c.id),tasks=agenda().filter(a=>a.company_id===c.id&&a.status==='open');let url='';try{const u=new URL(c.website.startsWith('http')?c.website:'https://'+c.website);if(['https:','http:'].includes(u.protocol)&&c.website)url=u.href}catch{}return head(c.name,[c.industry,c.city].filter(Boolean).join(' · ')||'Alles zu dieser Firma an einem Ort',button('Kontakt festhalten','conversation',c.id,'primary')+button('Aufgabe planen','company-task',c.id),'FIRMA')+companyQuick(c,ds,tasks)+`${c.do_not_contact?'<div class="notice">Kontaktstopp aktiv. Interne Notizen und Aufgaben bleiben möglich.</div>':''}<div class="detail-layout"><div><section class="panel"><div class="panel-head"><div><h3>Was steht als Nächstes an?</h3><p>Aufgaben öffnen, ändern oder über „Kontakt festhalten“ abschließen.</p></div><span class="tab-count">${tasks.length}</span></div>${tasks.map(taskRow).join('')||blank('Noch kein nächster Schritt','Nach einem Gespräch kannst du hier direkt den nächsten Termin planen.')}</section><section class="panel section-gap"><div class="panel-head"><div><h3>Was bisher passiert ist</h3><p>Gespräche, Notizen und erledigte Schritte</p></div>${button('+ Notiz','company-note',c.id,'small')}</div>${timeline(data.activities.filter(a=>a.company_id===c.id))}</section><details class="panel section-gap company-deals"><summary>Angebote & Aufträge <span class="tab-count">${ds.length}</span></summary><div class="panel-body"><p class="quiet-note">Nur nötig, wenn du Angebot, Auftragswert oder Abschluss bearbeiten möchtest.</p><div class="section-gap">${button('+ Neues Anliegen / Angebot','deal-company',c.id,'small')}</div></div><div class="table-wrap"><table><tbody>${ds.map(d=>`<tr><td><a class="main-link" href="#deal/${d.id}">${esc(d.title)}</a><small>${owner(d.owner_id)}</small></td><td>${stageBadge(d)}</td><td>${money(d.value)}</td></tr>`).join('')||'<tr><td>Noch kein Angebot angelegt.</td></tr>'}</tbody></table></div></details></div><aside><section class="panel"><div class="panel-head"><h3>Kontakt aufnehmen</h3>${button('Bearbeiten','company-edit',c.id,'small')}</div>${definition([...contactLinks(c),['Website',url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(c.website)}</a>`:''],['Notizen zur Firma',esc(c.notes)]])}</section><section class="panel section-gap"><div class="panel-head"><h3>Ansprechpartner</h3>${button('+ Person','contact-company',c.id,'small')}</div>${cs.map(ct=>`<div class="person-card"><strong>${esc(ct.first_name+' '+ct.last_name)}</strong><small>${esc(ct.role)}</small>${definition(contactLinks(ct))}${button('Person bearbeiten','contact-edit',ct.id,'small')}</div>`).join('')||'<div class="panel-body"><p class="quiet-note">Noch keine Person hinterlegt.</p></div>'}</section><details class="panel section-gap company-deals"><summary>Kontaktfreigabe</summary><div class="panel-body"><p class="quiet-note">Gilt für die ganze Firma.</p><div class="section-gap">${button(c.do_not_contact?'Kontaktstopp prüfen':'Kontaktstopp setzen','stop',c.id,'small danger')}</div></div></details></aside></div>`}
 
 function renderProjects(){
- const rows=data.projects.filter(p=>inScope(p)&&matches(p.name,company(p.company_id).name)&&(!['done','open'].includes(filter)||filter==='done'&&p.status==='done'||filter==='open'&&p.status!=='done'));
- return head('Projekte','Alle Aufträge von der Zusage bis zum Abschluss.','','PROJEKTMANAGEMENT')+tabs([['open','In Bearbeitung'],['done','Abgeschlossen'],['all','Alle']])+toolbar('Projekt oder Kunde suchen …')+paginate(rows,p=>`<tr><td><button class="row-button main-link" data-action="project" data-id="${p.id}">${esc(p.name)}</button><small><a href="#company/${p.company_id}">${esc(company(p.company_id).name)}</a></small></td><td>${esc(SERVICE_TYPES[p.service_type]||'Noch zuordnen')}</td><td>${badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')}</td><td>${owner(p.owner_id)}</td><td>${dateLabel(p.deadline)}</td><td>${button('Projekt bearbeiten','project',p.id,'small')}${button('Dateien','project-files',p.id,'small')}</td></tr>`,'<thead><tr><th>Projekt</th><th>Leistung</th><th>Status</th><th>Zuständig</th><th>Termin</th><th></th></tr></thead>');
+ const all=data.projects.filter(p=>inScope(p)&&matches(p.name,company(p.company_id).name)),
+ archived=all.filter(p=>p.status==='archived'),
+ active=all.filter(p=>p.status!=='archived'&&p.status!=='done'),
+ done=all.filter(p=>p.status==='done'),
+ shown=filter==='archived'?archived:filter==='done'?done:filter==='open'?active:all.filter(p=>p.status!=='archived');
+ return head('Projekte','Website-, App- und Social-Media-Aufträge. Archivierte Projekte und Kundendateien bleiben erhalten.','','PROJEKTMANAGEMENT')+
+  tabs([['open','In Bearbeitung',active.length],['done','Abgeschlossen',done.length],['all','Alle aktiven',active.length+done.length],['archived','Archiv',archived.length]])+
+  toolbar('Projekt oder Kunde suchen …')+
+  paginate(shown,p=>'<tr><td><button class="row-button main-link" data-action="'+(p.status==='archived'?'project-restore':'project')+'" data-id="'+p.id+'">'+esc(p.name)+'</button><small><a href="#company/'+p.company_id+'">'+esc(company(p.company_id).name)+'</a></small></td>'+
+  '<td>'+esc(SERVICE_TYPES[p.service_type]||'Noch zuordnen')+'</td>'+
+  '<td>'+badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')+'</td>'+
+  '<td>'+money(p.value)+'</td><td>'+dateLabel(p.deadline)+'</td>'+
+  '<td><div class="actions">'+(p.status==='archived'?button('Wiederherstellen','project-restore',p.id,'small'):button('Bearbeiten','project',p.id,'small')+
+     button('Dateien','project-files',p.id,'small')+button('Archivieren','project-archive',p.id,'small'))+'</div></td></tr>',
+  '<thead><tr><th>Projekt / Unternehmen</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Termin</th><th>Aktionen</th></tr></thead>');
 }
-function renderSettings(){const admin=data.session.role==='admin';return head('Einstellungen','Team, Zuständigkeiten und zentrale Daten.','','TEAM-WORKSPACE')+`<div class="notice info">Ihr arbeitet gemeinsam in einer zentralen Datenbank. Jede Aktion wird deinem persönlichen Konto zugeordnet.</div><div class="settings-grid"><section class="panel settings-card"><h3>Team & Zuständigkeiten</h3><p>Angemeldet als ${esc(data.session.name)} · ${admin?'Administrator':'Mitarbeiter'}</p>${data.crm_members.map(m=>`<div class="team-row"><span class="profile-avatar">${esc(initials(m.name))}</span><div class="member-info"><strong>${esc(m.name)}</strong><small>${m.active?'Aktiv':'Deaktiviert'}</small></div></div>`).join('')}<p class="quiet-note">Persönliche Konten werden vom Administrator in Supabase freigegeben.</p></section>${admin?`<section class="panel settings-card"><h3>Daten & Sicherung</h3><p>Export und Excel-/CSV-Import stehen der Administration zur Verfügung.</p><div class="actions"><a class="button" href="/api/backup">JSON-Backup herunterladen</a><a class="button" href="/api/export/leads.csv">CSV exportieren</a>${button('Excel / CSV importieren','import')}</div><p class="quiet-note">Eine Wiederherstellung der Team-Datenbank erfolgt ausschließlich durch die Administration außerhalb der App.</p></section>`:''}<section class="panel settings-card"><h3>Synchronisierung</h3><p>Änderungen erscheinen automatisch innerhalb weniger Sekunden. Während der Bearbeitung bleiben deine Eingaben erhalten.</p><p class="quiet-note">Bei parallelen Änderungen wird vor dem Speichern ein Abgleich verlangt.</p></section><section class="panel settings-card"><img class="logo-preview" src="brand-logo-full.png" alt="Kaiser Webdesign Logo"><h3>Kaiser CRM · V9.9.1 PAGES</h3><p>Gemeinsam arbeiten, ohne lokale Datenkopien.</p></section></div>`}
-function wirePipeline(){
- let dragged=null;
- $$('[data-drag-deal]').forEach(card=>{card.addEventListener('dragstart',e=>{dragged=Number(card.dataset.dragDeal);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(dragged));card.classList.add('dragging')});card.addEventListener('dragend',()=>{dragged=null;$$('.drop-active,.dragging').forEach(x=>x.classList.remove('drop-active','dragging'))})});
- $$('[data-drop-stage]').forEach(col=>{col.addEventListener('dragover',e=>{if(dragged!==null){e.preventDefault();e.dataTransfer.dropEffect='move';col.classList.add('drop-active')}});col.addEventListener('dragleave',e=>{if(!col.contains(e.relatedTarget))col.classList.remove('drop-active')});col.addEventListener('drop',async e=>{e.preventDefault();col.classList.remove('drop-active');const id=dragged;dragged=null;if(id===null)return;const d=find('deals',id),stage=col.dataset.dropStage;if(!d||!open(d)||blocked(d)||phase(d)===stage)return;try{if(stage==='followup'){quickStatusEditor(d.company_id,'followup',d.id);return}await pipelineMove(d.id,stage)}catch(err){toast(err.message)}})});
+const DASHBOARD_GROUPS=[
+ {key:'new',label:'Neue Leads',tone:'#a9bac1'},
+ {key:'contacted',label:'Kontaktaufnahme',tone:'#7a9ea8'},
+ {key:'interest',label:'Interesse',tone:'#4f9680'},
+ {key:'offer_email',label:'E-Mail-Angebote',tone:'#9183b5'},
+ {key:'offer_demo',label:'Angebotsdemos',tone:'#786ab0'},
+ {key:'followup',label:'Nachfassen',tone:'#d19b65'},
+ {key:'won',label:'Bestandskunden',tone:'#348170'},
+ {key:'no_interest',label:'Kein Interesse',tone:'#c7a49d'},
+ {key:'stopped',label:'Kontaktstopp',tone:'#88949d'},
+ {key:'lost',label:'Sonstige Abschlüsse',tone:'#bbc4cc'}
+];
+function dashboardGroupForDeal(d){
+ if(blocked(d))return 'stopped';
+ if(d.disposition==='no_interest')return 'no_interest';
+ if(d.disposition!=='active')return 'lost';
+ if(d.stage==='won')return 'won';
+ const key=phase(d);
+ return ['new','contacted','interest','offer_email','offer_demo','followup'].includes(key)?key:'interest';
+}
+function dashboardDetails(key){
+ const g=DASHBOARD_GROUPS.find(x=>x.key===key)||DASHBOARD_GROUPS[0];
+ const rows=data.deals.filter(d=>dashboardGroupForDeal(d)===g.key)
+  .sort((a,b)=>({high:0,medium:1,low:2}[a.priority||'medium']??1)-({high:0,medium:1,low:2}[b.priority||'medium']??1)
+   ||String(a.next_follow_up||'9999').localeCompare(String(b.next_follow_up||'9999'))
+   ||company(a.company_id).name.localeCompare(company(b.company_id).name,'de'));
+ return '<div class="dashboard-detail-head"><div class="dashboard-detail-heading"><i style="background:'+g.tone+'"></i><div><span class="eyebrow">DETAILANSICHT · LIVE</span><h3>'+esc(g.label)+'</h3></div></div><span class="dashboard-detail-total">'+rows.length+' '+(rows.length===1?'Vorgang':'Vorgänge')+'</span></div>'+
+  (rows.length?
+   '<div class="dashboard-detail-rows">'+rows.map(d=>{
+    const c=company(d.company_id),next=d.next_follow_up?'<span class="dashboard-detail-date">Nächster Schritt: '+esc(dateLabel(d.next_follow_up))+'</span>':'';
+    const priority=d.priority==='high'?'<span class="dashboard-detail-priority">Hohe Priorität</span>':'';
+    return '<div class="dashboard-detail-row"><div class="dashboard-detail-copy"><a href="#company/'+d.company_id+'" class="dashboard-detail-name">'+esc(c.name)+'</a><small>'+esc(d.title||'Kundenkontakt')+'</small></div><div class="dashboard-detail-extra">'+priority+next+'</div><a class="dashboard-detail-open" href="#company/'+d.company_id+'" aria-label="Firmenakte öffnen: '+esc(c.name)+'">Öffnen</a></div>';
+   }).join('')+'</div>':
+   '<div class="dashboard-detail-empty">Hier gibt es gerade keine Vorgänge. Wähle eine andere Kategorie im Kreisdiagramm.</div>');
+}
+function selectDashboardCategory(key){
+ if(!DASHBOARD_GROUPS.some(g=>g.key===key))return;
+ dashboardCategory=key;
+ const box=$('#dashboardSelection');
+ if(!box)return;
+ box.innerHTML=dashboardDetails(key);
+ box.classList.remove('dashboard-detail-reveal');
+ void box.offsetWidth;
+ box.classList.add('dashboard-detail-reveal');
+ $$('[data-action="dashboard-category"]').forEach(b=>{
+  const selected=b.dataset.id===key;
+  b.classList.toggle('selected',selected);
+  b.setAttribute('aria-pressed',selected?'true':'false');
+ });
 }
 function renderOverview(){
- const items=agenda(),dueNow=items.filter(a=>a.status==='open'&&a.date&&a.date<=today()),planned=items.filter(a=>a.status==='open'&&a.date>today()),calls=items.filter(a=>a.status==='open'&&a.kind==='call'),fresh=data.deals.filter(d=>d.disposition==='active'&&['new','attempted','contacted'].includes(d.stage)).length;
- const groups=[
-  {key:'new',label:'Neue Leads',tone:'#b1c0c8',action:'new'},
-  {key:'contacted',label:'Kontaktaufnahme',tone:'#779ca6',action:'contacted'},
-  {key:'interest',label:'Interesse',tone:'#4f967d',action:'interest'},
-  {key:'offer',label:'Angebote & Demos',tone:'#8d83be',action:'offer_email'},
-  {key:'followup',label:'Nachfassen',tone:'#d39f67',action:'followup'},
-  {key:'won',label:'Bestandskunden',tone:'#39816f',action:'won'},
-  {key:'no_interest',label:'Kein Interesse',tone:'#c9aa9f',action:'no_interest'},
-  {key:'stopped',label:'Kontaktstopp',tone:'#8e979d',action:'stopped'},
-  {key:'lost',label:'Sonstige abgeschlossen',tone:'#c5cbd2',action:'lost'}
- ];
- function group(d){if(blocked(d))return 'stopped';if(d.disposition==='no_interest')return 'no_interest';if(d.disposition!=='active')return 'lost';if(d.stage==='won')return 'won';const k=phase(d);return k==='new'?'new':k==='contacted'?'contacted':k==='interest'?'interest':k==='followup'?'followup':'offer'}
- for(const g of groups)g.count=data.deals.filter(d=>group(d)===g.key).length;
- const total=groups.reduce((n,g)=>n+g.count,0),c=2*Math.PI*74;let offset=0;
- const slices=groups.map(g=>{const dash=total?g.count/total*c:0,html=g.count?`<circle class="donut-arc" r="74" cx="100" cy="100" fill="none" stroke="${g.tone}" stroke-width="19" stroke-dasharray="${dash.toFixed(3)} ${(c-dash).toFixed(3)}" stroke-dashoffset="${(-offset).toFixed(3)}" transform="rotate(-90 100 100)" role="button" tabindex="0" aria-label="${esc(g.label)}: ${g.count}" data-action="dashboard-category" data-id="${g.action}"><title>${esc(g.label)} · ${g.count}</title></circle>`:'';offset+=dash;return html}).join('');
- const legend=groups.filter(g=>g.count).map(g=>`<button class="donut-legend-item" data-action="dashboard-category" data-id="${g.action}"><i style="background:${g.tone}"></i><span>${esc(g.label)}</span><strong>${g.count}</strong></button>`).join('');
- return `<section class="dashboard-greeting"><div><span class="eyebrow">KAISER WEBDESIGN · SALES WORKSPACE</span><h1>Dein Überblick.</h1><p>${new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · Das Wichtigste auf einen Blick.</p></div><a href="#sales" class="button primary">Zur Lead-Pipeline ${icon('arrow')}</a></section>
- <div class="dashboard-kpis"><button data-action="go-today"><small>Jetzt fällig</small><strong>${dueNow.length}</strong><span>Aufgaben und Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Kontaktversuche</small><strong>${fresh}</strong><span>Zu bearbeitende Leads</span></button><button data-action="go-planned"><small>Anrufe offen</small><strong>${calls.length}</strong><span>Geplante Rückrufe</span></button><button data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>${groups.find(g=>g.key==='won').count}</strong><span>Bestandskunden</span></button></div>
- <div class="dashboard-main"><section class="panel dashboard-chart"><div class="dashboard-section-head"><div><span class="eyebrow">PIPELINE-VERTEILUNG</span><h2>Wo stehen eure Leads?</h2><p>Klicke auf einen Bereich, um die passenden Vorgänge zu öffnen.</p></div></div><div class="donut-layout"><div class="donut-visual"><svg viewBox="0 0 200 200" role="img" aria-label="Leadstatus als Kreisdiagramm"><circle class="donut-track" cx="100" cy="100" r="74" fill="none" stroke="#edf1f3" stroke-width="19"/>${slices}</svg><div class="donut-center"><strong>${total}</strong><span>Vorgänge</span></div></div><div class="donut-legend">${legend||'<p>Noch keine Leads vorhanden.</p>'}</div></div></section>
- <div class="dashboard-agenda">${taskGroup('Heute erledigen',dueNow.slice(0,7),'Für heute ist alles erledigt.')}${planned.length?taskGroup('Demnächst',planned.slice(0,4),''):''}</div></div>`;
+ const items=agenda(),dueNow=items.filter(a=>a.status==='open'&&a.date&&a.date<=today()),
+ calls=items.filter(a=>a.status==='open'&&a.kind==='call'),
+ fresh=data.deals.filter(d=>d.disposition==='active'&&['new','attempted','contacted'].includes(d.stage)).length;
+ const groups=DASHBOARD_GROUPS.map(g=>({...g,count:data.deals.filter(d=>dashboardGroupForDeal(d)===g.key).length}));
+ const total=data.deals.length,circumference=2*Math.PI*74;
+ let offset=0;
+ const slices=groups.map(g=>{
+  const dash=total?g.count/total*circumference:0;
+  if(!g.count)return '';
+  const selected=dashboardCategory===g.key;
+  const html='<circle class="donut-arc'+(selected?' selected':'')+'" r="74" cx="100" cy="100" fill="none" stroke="'+g.tone+
+    '" stroke-width="19" stroke-dasharray="'+dash.toFixed(3)+' '+(circumference-dash).toFixed(3)+'" stroke-dashoffset="'+(-offset).toFixed(3)+
+    '" transform="rotate(-90 100 100)" role="button" tabindex="0" aria-pressed="'+selected+'" aria-label="'+esc(g.label)+': '+g.count+
+    '" data-action="dashboard-category" data-id="'+g.key+'"><title>'+esc(g.label)+' · '+g.count+'</title></circle>';
+  offset+=dash;return html;
+ }).join('');
+ const legend=groups.map(g=>'<button type="button" class="donut-legend-item'+(dashboardCategory===g.key?' selected':'')+
+  '" data-action="dashboard-category" data-id="'+g.key+'" aria-pressed="'+(dashboardCategory===g.key)+
+  '"><i style="background:'+g.tone+'"></i><span>'+esc(g.label)+'</span><strong>'+g.count+'</strong></button>').join('');
+ const tasks=dueNow.slice(0,4).map(a=>'<div class="dashboard-todo-item"><span class="dashboard-todo-icon">'+icon(a.kind)+'</span>'+
+  '<div class="dashboard-todo-label"><a href="#'+(a.company_id?'company/'+a.company_id:'activities')+'">'+esc(a.title)+'</a>'+
+  '<small>'+esc(a.company_id?company(a.company_id).name:'Allgemeine Aufgabe')+' · '+esc(dateLabel(a.date))+'</small></div>'+
+  '<button type="button" class="dashboard-todo-done" data-action="complete" data-id="'+esc(a.key)+'">Erledigt</button></div>').join('');
+ return '<section class="dashboard-greeting"><div><span class="eyebrow">KAISER WEBDESIGN · SALES WORKSPACE</span><h1>Dein Überblick.</h1><p>'+
+  new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+
+  ' · Alle Vorgänge. Ein klarer nächster Schritt.</p></div><a href="#sales" class="button primary">Zur Lead-Pipeline</a></section>'+
+  '<div class="dashboard-kpis"><button data-action="go-today"><small>Jetzt fällig</small><strong>'+dueNow.length+
+  '</strong><span>Aufgaben & Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Kontaktversuche</small><strong>'+fresh+
+  '</strong><span>Offene Erstkontakte</span></button><button data-action="go-planned"><small>Anrufe offen</small><strong>'+calls.length+
+  '</strong><span>Geplante Gespräche</span></button><button data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>'+
+  (groups.find(g=>g.key==='won')?.count||0)+'</strong><span>Bestandskunden</span></button></div>'+
+  '<section class="panel dashboard-chart dashboard-chart-full"><div class="dashboard-section-head"><div><span class="eyebrow">VERTRIEBSÜBERSICHT</span>'+
+  '<h2>Wo stehen eure Leads?</h2><p>Wähle eine Kategorie. Die Details erscheinen direkt darunter – ohne Seitenwechsel.</p></div></div>'+
+  '<div class="donut-layout"><div class="donut-visual"><svg viewBox="0 0 200 200" role="group" aria-label="Leadstatus als interaktives Kreisdiagramm">'+
+  '<circle class="donut-track" cx="100" cy="100" r="74" fill="none" stroke="#edf1f3" stroke-width="19"/>'+slices+'</svg>'+
+  '<div class="donut-center"><strong>'+total+'</strong><span>Vorgänge</span></div></div><div class="donut-legend">'+legend+'</div></div>'+
+  '<section id="dashboardSelection" class="dashboard-selection" aria-live="polite">'+dashboardDetails(dashboardCategory)+'</section></section>'+
+  '<section class="dashboard-todo-panel panel"><div class="dashboard-todo-header"><div><span class="eyebrow">DEIN WORKFLOW</span>'+
+  '<h2>To-do <span>'+dueNow.length+' fällig</span></h2></div><a href="#activities">Alle Aufgaben ansehen</a></div>'+
+  '<div class="dashboard-todo-list">'+(tasks||'<p class="dashboard-todo-empty">Keine Aufgaben für heute offen.</p>')+'</div>'+
+  (dueNow.length>4?'<p class="dashboard-todo-overflow">+'+(dueNow.length-4)+' weitere fällige Aufgaben in der Aufgabenübersicht</p>':'')+'</section>';
 }
 
 function renderCompany(id){
- const c=find('companies',id);if(!c)return blank('Firma nicht gefunden','Wähle eine Firma aus.');const ds=data.deals.filter(d=>d.company_id===c.id),cs=data.contacts.filter(t=>t.company_id===c.id),tasks=agenda().filter(a=>a.company_id===c.id&&a.status==='open'),completed=agenda().filter(a=>a.company_id===c.id&&a.status==='done'),available=ds.filter(nonWon),d=available.find(open)||available[0],next=tasks[0],status=companyStatus(c);let url='';try{const u=new URL(c.website.startsWith('http')?c.website:'https://'+c.website);if(['https:','http:'].includes(u.protocol)&&c.website)url=u.href}catch{};
- return `<header class="focus-company-head"><div class="focus-company-id"><span class="focus-monogram">${esc(initials(c.name))}</span><div><span class="eyebrow">FIRMA</span><h1>${esc(c.name)}</h1><p>${esc([c.industry,c.city].filter(Boolean).join(' · '))}</p></div></div>${button('Stammdaten bearbeiten','company-edit',c.id,'small')}</header><section class="company-workbar"><div><span class="eyebrow">AKTUELLER STATUS</span>${companyStatusBadge(c)}<h2>${next?esc(next.title):'Kein nächster Schritt geplant'}</h2>${next?due(next):'<p>Wenn ein weiterer Kontakt nötig ist, plane ihn hier.</p>'}</div><div class="actions">${c.do_not_contact?button('Kontakt freigeben','stop',c.id):button('Kontakt festhalten','conversation',c.id,'primary')}${button('+ Aufgabe','company-task',c.id)+button('Termin vereinbaren','appointment-new',c.id)}</div></section><div class="company-clear-grid"><aside class="clear-stack"><section class="panel clear-panel"><div class="panel-head"><h3>Kontaktdaten</h3></div>${definition([...contactLinks(c),['Website',url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(c.website)}</a>`:''],['Notizen',esc(c.notes)]])}<div class="panel-head compact-head"><h3>Ansprechpartner</h3>${button('+ Person','contact-company',c.id,'small')}</div>${cs.map(ct=>`<div class="person-card"><strong>${esc(ct.first_name+' '+ct.last_name)}</strong><small>${esc(ct.role)}</small>${definition(contactLinks(ct))}${button('Bearbeiten','contact-edit',ct.id,'small')}</div>`).join('')||'<div class="panel-body empty-copy">Keine Person hinterlegt.</div>'}</section><details class="panel clear-panel company-deals"><summary>Weitere Optionen</summary><div class="panel-body"><div class="actions">${!c.do_not_contact&&status!=='won'?button('Nachfassen','quick-followup',c.id,'small')+button('Kein Interesse','quick-no-interest',c.id,'small danger')+button('In Bearbeitung','quick-open',c.id,'small'):''}${button(c.do_not_contact?'Kontakt freigeben':'Kontaktstopp setzen','stop',c.id,'small danger')}</div><h3 class="section-gap">Angebote & Aufträge</h3>${ds.map(x=>`<div class="focus-deal"><a class="main-link" href="#deal/${x.id}">${esc(x.title)}</a>${stageBadge(x)}<strong>${money(x.value)}</strong>${button('Phase / Abschluss','stage',x.id,'small')}</div>`).join('')||'Noch kein Vorgang.'}${button('+ Angebot / Vorgang','deal-company',c.id,'small')}</div></details></aside><div class="clear-stack">${taskGroup('Offene Aufgaben',tasks,'Keine offenen Aufgaben.')}<section class="panel clear-panel"><div class="panel-head"><h3>Kontaktverlauf</h3>${button('+ Notiz','company-note',c.id,'small')}</div>${timeline(data.activities.filter(a=>a.company_id===c.id))}</section><details class="panel clear-panel company-deals"><summary>Erledigte Aufgaben (${completed.length})</summary>${taskGroup('Archiv',completed,'Noch keine erledigten Aufgaben.')}</details></div></div>`;
+ const c=find('companies',id);
+ if(!c)return blank('Firma nicht gefunden','Wähle eine Firma aus.');
+ const deals=data.deals.filter(d=>d.company_id===c.id),
+  openDeals=deals.filter(d=>d.disposition==='active'&&d.stage!=='won'),
+  wonDeals=deals.filter(d=>d.stage==='won'&&d.disposition==='active'),
+  persons=data.contacts.filter(p=>p.company_id===c.id),
+  projects=data.projects.filter(p=>p.company_id===c.id&&p.status!=='archived'),
+  appointments=data.appointments.filter(a=>a.company_id===c.id&&a.status==='planned')
+    .sort((a,b)=>(a.start_at||'').localeCompare(b.start_at||'')),
+  dueTasks=agenda().filter(a=>a.company_id===c.id&&a.status==='open'),
+  history=agenda().filter(a=>a.company_id===c.id&&a.status==='done'),
+  next=dueTasks[0];
+ let website='';try{if(c.website){const u=new URL(/^https?:/i.test(c.website)?c.website:'https://'+c.website);if(['https:','http:'].includes(u.protocol))website=u.href;}}catch{}
+ const totalWon=wonDeals.reduce((n,d)=>n+(Number(d.value)||0),0);
+ const highestPriority=openDeals.some(d=>d.priority==='high')?'Hoch':openDeals.some(d=>d.priority==='medium')?'Mittel':'Normal';
+ const actions='<div class="company-toolbar">'+
+  (c.do_not_contact?button('Kontakt freigeben','stop',c.id,'small'):
+  button('Kontakt festhalten','conversation',c.id,'primary')+
+  (openDeals.length||!wonDeals.length?button('Als Bestandskunde übernehmen','customer-win',c.id,'small'):''))+
+  button('Termin','appointment-new',c.id,'small')+
+  button('+ Aufgabe','company-task',c.id,'small')+
+  button('Daten bearbeiten','company-edit',c.id,'small')+'</div>';
+ const detail=(label,value)=>'<div class="company-fact"><small>'+esc(label)+'</small><strong>'+value+'</strong></div>';
+ const cardProjects=projects.map(p=>
+  '<article class="company-project-line"><div><strong>'+esc(p.name)+'</strong><small>'+esc(SERVICE_TYPES[p.service_type]||'Projekt')+
+  ' · '+esc(PROJECTS[p.status]||p.status)+'</small></div><span class="company-project-money">'+money(p.value)+'</span><div class="company-project-cta">'+
+   button('Bearbeiten','project',p.id,'small')+button('Dateien','project-files',p.id,'small')+
+   button('Archivieren','project-archive',p.id,'small')+'</div></article>').join('');
+ const opportunities=deals.map(d=>'<div class="company-opportunity">'+
+  '<div><a href="#deal/'+d.id+'" class="company-opportunity-title">'+esc(d.title)+'</a>'+
+  '<small>'+esc(d.stage==='won'?'Auftrag gewonnen':PHASES[phase(d)]||d.stage)+'</small></div>'+
+  '<span>'+stageBadge(d)+'</span><strong>'+money(d.value)+'</strong>'+
+  '<div class="company-opportunity-actions">'+
+   (d.stage==='won'&&d.disposition==='active'?button('Zurück in Vertrieb','customer-reopen',d.id,'small'):
+    button('Status ändern','stage',d.id,'small'))+'</div></div>').join('');
+ const people=persons.map(p=>'<article class="company-person"><span class="company-person-avatar">'+
+  esc(initials(p.first_name+' '+p.last_name))+'</span><div class="company-person-text"><strong>'+esc((p.first_name+' '+p.last_name).trim())+
+  '</strong><small>'+esc(p.role||'Ansprechpartner')+'</small></div>'+
+  '<div class="company-person-actions">'+definition(contactLinks(p))+button('Bearbeiten','contact-edit',p.id,'small')+'</div></article>').join('');
+ return '<section class="company-focus-header"><div class="company-focus-top"><span class="company-identity">'+
+   '<span class="company-identity-mark">'+esc(initials(c.name))+'</span><span><small>UNTERNEHMENSAKTE</small><h1>'+esc(c.name)+
+   '</h1><span class="company-subline">'+esc([c.industry,c.city].filter(Boolean).join(' · '))+'</span></span></span>'+
+   '<span class="company-status-tag">'+companyStatusBadge(c)+'</span></div>'+actions+'</section>'+
+   '<div class="company-insight-strip">'+
+   detail('Auftragswert gewonnen',money(totalWon))+
+   detail('Vertriebsvorgänge',String(deals.length))+
+   detail('Aktive Projekte',String(projects.filter(p=>p.status!=='done').length))+
+   detail('Offene Aufgaben',String(dueTasks.length))+
+   '</div>'+
+   '<div class="company-workspace-grid"><div class="company-main-column">'+
+   '<section class="panel company-journey"><div class="company-section-heading"><span class="eyebrow">VERTRIEB & ZUSAMMENARBEIT</span><h2>Vorgänge und nächste Schritte</h2></div>'+
+   (c.do_not_contact?'<p class="company-warning">Kontaktstopp aktiv. Bitte keine neuen Akquiseaktionen durchführen.</p>':'')+
+   '<div class="company-next-line"><span>ALS NÄCHSTES</span><strong>'+esc(next?.title||'Noch keine Aufgabe geplant')+'</strong>'+
+   (next?'<small>'+esc(dateLabel(next.date))+'</small>':'')+
+   (next?button('Erledigt','complete',next.key,'small'):'')+'</div>'+
+   '<div class="company-opportunities">'+(opportunities||'<p class="company-empty">Noch keine Verkaufschance erfasst. Über „Als Bestandskunde übernehmen“ kannst du direkt einen Auftrag anlegen.</p>')+
+   '</div><div class="company-journey-actions">'+button('+ Angebot / Vorgang','deal-company',c.id,'small')+
+   (!c.do_not_contact?button('Nachfassen','quick-followup',c.id,'small')+button('Kein Interesse','quick-no-interest',c.id,'small'):'')+
+   '</div></section>'+
+   '<section class="panel company-projects"><div class="company-section-heading"><span class="eyebrow">PROJEKTMANAGEMENT</span><h2>Kundenprojekte</h2></div>'+
+   (cardProjects||'<p class="company-empty">Für dieses Unternehmen ist noch kein aktives Projekt hinterlegt.</p>')+'</section>'+
+   '<section class="panel company-activity"><div class="company-section-heading"><span class="eyebrow">DOKUMENTATION</span><h2>Kontaktverlauf</h2>'+
+   button('+ Notiz','company-note',c.id,'small')+'</div>'+timeline(data.activities.filter(a=>a.company_id===c.id))+'</section></div>'+
+   '<aside class="company-side-column"><section class="panel company-contact-panel"><div class="company-section-heading"><span class="eyebrow">STAMMDATEN</span><h2>Kontakt</h2></div>'+
+   definition([...contactLinks(c),['Website',website?'<a href="'+esc(website)+'" target="_blank" rel="noopener noreferrer">'+esc(c.website)+'</a>':'—']])+
+   (c.notes?'<p class="company-note-preview">'+esc(c.notes)+'</p>':'')+'</section>'+
+   '<section class="panel company-contact-panel"><div class="company-section-heading"><span class="eyebrow">KONTAKTPERSONEN</span><h2>Ansprechpartner</h2>'+
+   button('+ Person','contact-company',c.id,'small')+'</div>'+(people||'<p class="company-empty">Noch keine Kontaktperson hinterlegt.</p>')+'</section>'+
+   '<section class="panel company-contact-panel"><div class="company-section-heading"><span class="eyebrow">PLANUNG</span><h2>Termine</h2></div>'+
+   (appointments.slice(0,5).map(a=>'<div class="company-appointment"><strong>'+esc(a.title)+'</strong><small>'+esc(dateLabel(a.start_at))+
+    ' · '+esc(a.start_at?.slice(11,16)||'')+'</small><div>'+button('Bearbeiten','activity-edit','appointment:'+a.id,'small')+
+    button('Entfernen','appointment-archive',a.id,'small')+'</div></div>').join('')||'<p class="company-empty">Kein aktiver Termin.</p>')+
+   '<div class="company-section-footer">'+button('+ Termin vereinbaren','appointment-new',c.id,'small')+'</div></section>'+
+   '<section class="company-footer-controls"><span>Weitere Firmenaktionen</span>'+
+   button(c.do_not_contact?'Kontaktstopp aufheben':'Kontaktstopp setzen','stop',c.id,'small danger')+
+   '<details><summary>Aufgabenarchiv ('+history.length+')</summary>'+taskGroup('Erledigt',history,'Noch kein Abschluss.')+'</details></section></aside></div>';
 }
 function renderAppointments(){
- const all=agenda().filter(a=>a.source==='appointment'&&inScope(a)&&matches(a.title,company(a.company_id).name));
- const upcoming=all.filter(a=>a.status==='open'&&a.date>=today()), late=all.filter(a=>a.status==='open'&&a.date<today()),done=all.filter(a=>a.status==='done'),other=all.filter(a=>a.status==='cancelled');
- return head('Termine','Vereinbarte Gespräche und Projekttermine mit Datum, Uhrzeit und Firmenbezug.',button('+ Termin vereinbaren','appointment-new','','primary'),'KALENDER')+tabs([['open','Anstehend',upcoming.length+late.length],['done','Erledigt',done.length],['cancelled','Abgesagt',other.length]])+toolbar('Termin oder Firma suchen …')+`<div class="clear-stack">${filter==='done'?taskGroup('Vergangene Termine',done,'Keine erledigten Termine.'):filter==='cancelled'?taskGroup('Abgesagte Termine',other,'Keine abgesagten Termine.'):taskGroup('Anstehende Termine',[...late,...upcoming],'Aktuell ist kein Termin vereinbart.')}</div>`;
+ const all=agenda().filter(a=>a.source==='appointment'&&inScope(a)&&matches(a.title,company(a.company_id).name)),
+ upcoming=all.filter(a=>a.status==='open'&&a.date>=today()),late=all.filter(a=>a.status==='open'&&a.date<today()),
+ done=all.filter(a=>a.status==='done'),cancelled=all.filter(a=>a.status==='cancelled'),
+ archived=all.filter(a=>a.status==='archived');
+ const rows=filter==='done'?done:filter==='cancelled'?cancelled:filter==='archived'?archived:[...late,...upcoming];
+ return head('Termine','Anstehende, abgeschlossene und abgesagte Termine. Einträge lassen sich mit Bestätigung archivieren oder wiederherstellen.',button('+ Termin vereinbaren','appointment-new','','primary'),'KALENDER')+
+ tabs([['open','Anstehend',upcoming.length+late.length],['done','Erledigt',done.length],['cancelled','Abgesagt',cancelled.length],['archived','Archiv',archived.length]])+
+ toolbar('Termin oder Firma suchen …')+
+ '<div class="clear-stack">'+taskGroup(filter==='archived'?'Archivierte Termine':filter==='done'?'Abgeschlossene Termine':filter==='cancelled'?'Abgesagte Termine':'Anstehende Termine',
+ rows,filter==='archived'?'Keine archivierten Termine.':'Keine passenden Termine.')+'</div>';
 }
 function renderSpecial(status){
  const firms=data.companies.filter(c=>matches(c.name,c.city,c.phone,c.email)&&(status==='stopped'?Boolean(c.do_not_contact):!c.do_not_contact&&companyStatus(c)==='no_interest'));
@@ -155,12 +329,95 @@ function renderSpecial(status){
  return head(title,sub,'','KUNDENSTATUS')+toolbar('Firma suchen …')+paginate(firms,c=>`<tr><td><a class="main-link" href="#company/${c.id}">${esc(c.name)}</a><small>${esc(c.city||'')}</small></td><td>${companyStatusBadge(c)}</td><td>${esc(c.phone||c.email||'—')}</td><td><a class="button small" href="#company/${c.id}">Akte öffnen</a></td></tr>`,'<thead><tr><th>Unternehmen</th><th>Status</th><th>Kontakt</th><th></th></tr></thead>');
 }
 function renderClients(){
- const clients=data.projects.filter(p=>matches(p.name,company(p.company_id).name)),won=data.deals.filter(d=>d.stage==='won'&&d.disposition==='active'),all=clients.filter(p=>!['done','active'].includes(filter)||filter==='done'&&p.status==='done'||filter==='active'&&p.status!=='done');
- return head('Bestandskunden','Gewonnene Aufträge, laufende Zusammenarbeit und abgeschlossene Kundenprojekte.','','KUNDENBETREUUNG')+tabs([['all','Alle Kunden',clients.length],['active','Laufende Projekte',clients.filter(p=>p.status!=='done').length],['done','Abgeschlossene Projekte',clients.filter(p=>p.status==='done').length]])+toolbar('Kunde oder Projekt suchen …')+paginate(all,p=>`<tr><td><a class="main-link" href="#company/${p.company_id}">${esc(company(p.company_id).name)}</a><small>${esc(p.name)}</small></td><td>${esc(SERVICE_TYPES[p.service_type]||'Projekt')}</td><td>${badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')}</td><td>${button('Projekt bearbeiten','project',p.id,'small')}${button('Dateien','project-files',p.id,'small')}</td></tr>`,'<thead><tr><th>Kunde</th><th>Leistung</th><th>Projektstatus</th><th></th></tr></thead>')+`<p class="muted client-hint">${won.length} gewonnene Verkaufschancen insgesamt.</p>`;
+ const won=data.deals.filter(d=>d.stage==='won'&&d.disposition==='active');
+ const all=data.projects.filter(p=>matches(p.name,company(p.company_id).name));
+ const active=all.filter(p=>p.status!=='archived'&&p.status!=='done'),done=all.filter(p=>p.status==='done'),archived=all.filter(p=>p.status==='archived');
+ const visible=filter==='done'?done:filter==='active'?active:filter==='archived'?archived:all.filter(p=>p.status!=='archived');
+ const price=p=>Number(p.value)||0,sum=items=>items.reduce((n,p)=>n+price(p),0);
+ const wonTotal=won.reduce((n,d)=>n+(Number(d.value)||0),0);
+ return head('Bestandskunden','Gewonnene Aufträge, Projektwerte und abgeschlossene Arbeiten. Fehlzuordnungen kannst du direkt korrigieren.','','KUNDENBETREUUNG')+
+ '<section class="client-revenue-grid" aria-label="Auftragswerte">'+
+ '<div class="client-revenue-card"><span>Gewonnene Aufträge</span><strong>'+money(wonTotal)+'</strong><small>'+won.length+' angenommene Verkaufschancen</small></div>'+
+ '<div class="client-revenue-card"><span>Abgeschlossene Projekte</span><strong>'+money(sum(done))+'</strong><small>'+done.length+' abgeschlossene Projekte</small></div>'+
+ '<div class="client-revenue-card"><span>Laufende Projekte</span><strong>'+money(sum(active))+'</strong><small>'+active.length+' in Bearbeitung oder pausiert</small></div></section>'+
+ tabs([['all','Alle Kunden',active.length+done.length],['active','Laufende Projekte',active.length],['done','Abgeschlossene Projekte',done.length],['archived','Archiv',archived.length]])+
+ toolbar('Kunde oder Projekt suchen …')+
+ paginate(visible,p=>'<tr><td><a class="main-link" href="#company/'+p.company_id+'">'+esc(company(p.company_id).name)+'</a><small>'+esc(p.name)+'</small></td>'+
+ '<td>'+esc(SERVICE_TYPES[p.service_type]||'Projekt')+'</td>'+
+ '<td>'+badge(PROJECTS[p.status]||p.status,p.status==='done'?'green':'purple')+'</td>'+
+ '<td class="client-price-cell">'+money(price(p))+'</td>'+
+ '<td><div class="actions">'+(p.status==='archived'?button('Wiederherstellen','project-restore',p.id,'small'):
+ button('Projekt','project',p.id,'small')+button('Dateien','project-files',p.id,'small')+
+ button('Archivieren','project-archive',p.id,'small'))+
+ (p.deal_id&&data.deals.some(d=>d.id===p.deal_id&&d.stage==='won'&&d.disposition==='active')?
+ button('Zurück in Vertrieb','customer-reopen',p.deal_id,'small'):'')+'</div></td></tr>',
+ '<thead><tr><th>Kunde / Auftrag</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Aktionen</th></tr></thead>')+
+ '<p class="muted client-hint">Angezeigt werden Auftragswerte, nicht bestätigte Zahlungseingänge. Gewonnene Chancen und Projekte werden getrennt ausgewiesen, um keine Umsätze doppelt zu zählen.</p>';
 }
 function pipelineFollowupEditor(id){
  const d=find('deals',id),base=new Date(today()+'T12:00:00Z');base.setUTCDate(base.getUTCDate()+3);
  edit('Nachfassen planen',help('Die Wiedervorlage erscheint automatisch unter Aufgaben und Termine.')+field('Nachfassen am','due_date',d.next_follow_up||base.toISOString().slice(0,10),'date',true,true)+field('Uhrzeit (optional)','due_time',d.next_follow_up_time||'','time')+textarea('Notiz','notes'),v=>command('pipeline',id,{...v,status:'followup'},dialogRevision),'Wiedervorlage speichern');
+}
+function customerWinEditor(cid){
+ const c=company(cid),deals=data.deals.filter(d=>d.company_id===cid&&d.stage!=='won'),
+ defaultDeal=deals.length===1?deals[0]:null;
+ const choices=deals.length>1?selectField('Welcher Auftrag?','deal_id',{
+  '':'Bitte auswählen',...Object.fromEntries(deals.map(d=>[d.id,d.title]))
+ },'',true):'<input type="hidden" name="deal_id" value="'+(defaultDeal?.id||'')+'">';
+ edit('Als Bestandskunde übernehmen · '+c.name,
+  help('Ein Auftrag wird als gewonnen markiert und mit dem ausgewählten Website-, App- oder Social-Media-Projekt verknüpft. Es wird kein bestehender Datensatz gelöscht.')+
+  choices+
+  selectField('Leistung','service_type',{
+   website:'Website',app:'App',social_media:'Social Media',mixed:'Kombination'
+  },'website',true)+
+  field('Auftragswert in €','value',defaultDeal?.value??0,'number',true,true)+
+  textarea('Hinweise zum Projektstart (optional)','notes')+
+  '<label class="span2 completion-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>Die Zusage und der Auftragswert sind geprüft.</span></label>',
+  v=>command('customer_win',cid,v,dialogRevision),'Als Bestandskunde übernehmen');
+}
+function customerReopenEditor(dealId){
+ const d=find('deals',dealId);if(!d)return;
+ const linked=data.projects.filter(p=>p.deal_id===d.id&&p.status!=='archived');
+ edit('Bestandskunde zurückstufen',help('Der Auftrag wird wieder in die aktive Vertriebspipeline übernommen. Verknüpfte Projekte ('+linked.length+') verschwinden aus der aktiven Liste, bleiben aber inklusive aller Dateien im Archiv erhalten.')+
+  selectField('Neue Vertriebsphase','stage',{new:'Neuer Lead',contacted:'Kontaktaufnahme',
+   interest:'Interesse',offer_email:'E-Mail-Angebot',offer_demo:'Demo-Angebot',followup:'Nachfassen'},'interest',true)+
+  '<div class="span2" id="reopenDate" hidden>'+field('Wiedervorlage am','due_date','','date',true)+'</div>'+
+  textarea('Warum wird die Zusage zurückgenommen? · Pflichtfeld','reason')+
+  '<label class="span2 completion-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>Ja, Auftrag aus den Bestandskunden entfernen und Projekt archivieren.</span></label>',
+  async v=>{if(!String(v.reason||'').trim())throw Error('Bitte einen Grund angeben.');await command('customer_reopen',dealId,v,dialogRevision);},'Zurück in Vertrieb');
+ const phase=$('#fields select[name=stage]'),date=$('#reopenDate');
+ const update=()=>{date.hidden=phase.value!=='followup';date.querySelector('input[name=due_date]').required=phase.value==='followup'};
+ phase.addEventListener('change',update);update();
+}
+async function archiveProject(id){
+ const p=find('projects',id);if(!p)return;
+ if(!confirm('Projekt „'+p.name+'“ aus der aktiven Ansicht entfernen? Alle Dateien bleiben im Archiv erhalten.'))return;
+ await command('project_archive',id,{confirmed:'yes'});
+ toast('Projekt ins Archiv verschoben. Dateien bleiben erhalten.');
+}
+async function restoreProject(id){
+ const p=find('projects',id);if(!p)return;
+ if(!confirm('Projekt „'+p.name+'“ aus dem Archiv zurückholen? Es erscheint zunächst als pausiert.'))return;
+ await command('project_restore',id,{confirmed:'yes'});
+ toast('Projekt wiederhergestellt.');
+}
+async function cancelAppointment(id){
+ const a=find('appointments',id);if(!a||a.status!=='planned')return toast('Termin ist nicht mehr aktiv.');
+ if(!confirm('Termin „'+a.title+'“ als abgesagt markieren? Er bleibt im Bereich „Abgesagt“ sichtbar.'))return;
+ await command('appointment_cancel',id,{confirmed:'yes'});
+ toast('Termin abgesagt.');
+}
+async function archiveAppointment(id){
+ const a=find('appointments',id);if(!a)return;
+ if(!confirm('Termin „'+a.title+'“ aus der Terminliste entfernen? Ein Eintrag im Verlauf bleibt erhalten.'))return;
+ await command('appointment_archive',id,{confirmed:'yes'});
+ toast('Termin archiviert.');
+}
+async function restoreAppointment(id){
+ const a=find('appointments',id);if(!a)return;
+ if(!confirm('Termin „'+a.title+'“ wiederherstellen? Er erscheint als abgesagt, bis du ihn neu einplanst.'))return;
+ await command('appointment_restore',id,{confirmed:'yes'});
+ toast('Termin wiederhergestellt.');
 }
 function pipelineWonEditor(id){
  const d=find('deals',id);
@@ -291,10 +548,10 @@ const routeLabel=r=>pages[r.split('/')[0]]||({deal:'Verkaufschance',company:'Unt
 function screenState(){return {route,scope,query,filter,view,page,scrollX:window.scrollX||0,scrollY:window.scrollY||0,areas:$$('.table-wrap,.kanban').map(el=>({left:el.scrollLeft||0,top:el.scrollTop||0}))}}
 function rememberScreen(){if(!data||restoringNavigation)return;const previous=history.state?.kaiserCRM?history.state:{};history.replaceState({...previous,kaiserCRM:true,screen:screenState()},'', '#'+route)}
 function showScreen(screen){clearTimeout(navigationScrollTimer);restoringNavigation=true;route=screen.route;scope=screen.scope??'all';query=screen.query??'';filter=screen.filter??(route==='contacts'?'companies':route==='activities'?'due':'open');view=screen.view??'board';page=screen.page||1;$('#searchResults').hidden=true;$('.sidebar').classList.remove('open');render();requestAnimationFrame(()=>{window.scrollTo(screen.scrollX||0,screen.scrollY||0);$$('.table-wrap,.kanban').forEach((el,i)=>{el.scrollLeft=screen.areas?.[i]?.left||0;el.scrollTop=screen.areas?.[i]?.top||0});restoringNavigation=false;rememberScreen()})}
-function navigateTo(next,overrides={}){if(!next||next===route&&!Object.keys(overrides).length)return;rememberScreen();const screen={route:next,scope,query:'',filter:next==='contacts'?'companies':next==='activities'?'due':'open',view,page:1,scrollX:0,scrollY:0,areas:[],...overrides};history.pushState({kaiserCRM:true,canBack:true,backLabel:routeLabel(route),screen},'', '#'+next);showScreen(screen)}
+function navigateTo(next,overrides={}){if(!next||next===route&&!Object.keys(overrides).length)return;rememberScreen();const screen={route:next,scope,query:'',filter:next==='contacts'?'companies':next==='activities'?'due':next==='clients'?'all':'open',view,page:1,scrollX:0,scrollY:0,areas:[],...overrides};history.pushState({kaiserCRM:true,canBack:true,backLabel:routeLabel(route),screen},'', '#'+next);showScreen(screen)}
 function goBack(){if(history.state?.kaiserCRM&&history.state.canBack){$('#crmBack').disabled=true;history.back();return}navigateTo(route.startsWith('company/')?'contacts':route.startsWith('deal/')?'sales':'overview')}
 function backNavigation(){const h=history.state,detail=/^(deal|company)\//.test(route);if(!h?.canBack&&!detail)return '';const label=h?.kaiserCRM&&h.canBack?h.backLabel:route.startsWith('company/')?pages.contacts:pages.sales;return `<div class="back-navigation"><button type="button" class="button back-button" id="crmBack" aria-label="Zurück zu ${esc(label)}"><span aria-hidden="true">←</span> Zurück zu ${esc(label)}</button></div>`}
-function navigate(){const next=location.hash.slice(1)||'overview';if(history.state?.kaiserCRM&&history.state.screen?.route===next){showScreen(history.state.screen);return}if(next===route)return;const screen={route:next,scope,query:'',filter:next==='contacts'?'companies':next==='activities'?'due':'open',view,page:1,scrollX:0,scrollY:0,areas:[]};history.replaceState({kaiserCRM:true,canBack:false,screen},'', '#'+next);showScreen(screen)}
+function navigate(){const next=location.hash.slice(1)||'overview';if(history.state?.kaiserCRM&&history.state.screen?.route===next){showScreen(history.state.screen);return}if(next===route)return;const screen={route:next,scope,query:'',filter:next==='contacts'?'companies':next==='activities'?'due':next==='clients'?'all':'open',view,page:1,scrollX:0,scrollY:0,areas:[]};history.replaceState({kaiserCRM:true,canBack:false,screen},'', '#'+next);showScreen(screen)}
 
 function wire(){wirePipeline();$('#firmStatus')?.addEventListener('change',e=>{filter=e.target.value;page=1;render()}); $('#crmBack')?.addEventListener('click',goBack); $('#scope')?.addEventListener('change',e=>{scope=e.target.value;page=1;render()});$('#localSearch')?.addEventListener('input',e=>{query=e.target.value;page=1;const start=e.target.selectionStart;render();const inp=$('#localSearch');inp.focus();inp.setSelectionRange(start,start)});$('#salesView')?.addEventListener('change',e=>{view=e.target.value;page=1;render()});$$('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;page=1;render()});$$('[data-page]').forEach(b=>b.onclick=()=>{page=Number(b.dataset.page);render()});$$('[data-action]').forEach(b=>{b.onclick=()=>act(b.dataset.action,b.dataset.id).catch(e=>toast(e.message));if(b.tagName.toLowerCase()==='circle')b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();b.click()}}});$('#mobilePhase')?.addEventListener('change',e=>{mobilePipelineStage=e.target.value;render()});$$('[data-priority-deal]').forEach(el=>el.onchange=async()=>{try{await command('deal_priority',Number(el.dataset.priorityDeal),{priority:el.value});toast('Priorität gespeichert.')}catch(err){toast(err.message)}});$$('[data-move-deal]').forEach(el=>el.onchange=async()=>{try{await pipelineMove(Number(el.dataset.moveDeal),el.value)}catch(err){toast(err.message)}el.value=''})}
 const field=(label,name,value='',type='text',full=false,required=false)=>`<label class="field ${full?'span2':''}">${esc(label)}${required?' *':''}<input name="${name}" type="${type}" value="${esc(value)}" ${required?'required':''} ${type==='number'?'min="0" step="0.01"':''}></label>`;
@@ -310,11 +567,66 @@ function dealEditor(id,cid){const d=find('deals',id)||{};if(!data.companies.leng
 function stageEditor(id){const d=find('deals',id),status=d.disposition!=='active'?'lost':d.stage==='won'?'won':'open',n=pending(d).length;edit('Phase & Abschluss',help('Nur hier änderst du den Verkaufsfortschritt. Ein Anrufergebnis oder eine erledigte Aufgabe verschiebt keine Phase.')+selectField('Verkaufsphase','stage',PHASES,phase(d)==='won'?'followup':phase(d),true)+selectField('Ergebnis','status',{open:'Offen',won:'Gewonnen',lost:'Verloren'},status,true)+selectField('Leistung bei Zusage','service_type',SERVICE_TYPES,'website',true)+textarea('Verlustgrund · bei „Verloren“ erforderlich','reason',d.lost_reason)+help(`Bei „Gewonnen“ wird einmalig ein Projekt angelegt. ${n} offene Aktivitäten sind verknüpft: Aufgaben und Termine bleiben sichtbar und müssen bewusst erledigt oder abgesagt werden. Eine alte Vertriebswiedervorlage wird beim Abschluss entfernt.`),v=>command('stage',id,v,dialogRevision))}
 function logEditor(id,note=false){edit(note?'Notiz hinzufügen':'Aktivität protokollieren',help('Der Eintrag erscheint im Verlauf. Verkaufsphase und bestehende Termine bleiben unverändert.')+(note?'<input type="hidden" name="kind" value="note">':selectField('Art','kind',{call:'Anruf',email:'E-Mail',meeting:'Gespräch / Termin',whatsapp:'WhatsApp',work:'Interne Ausarbeitung'},'call')+field('Ergebnis','result','Gespräch geführt','text',false,true))+textarea(note?'Notiz':'Gesprächsnotiz','body'),v=>command('log',null,{...v,deal_id:id},dialogRevision),'Eintrag speichern')}
 function taskEditor(id,did){const a=find('tasks',id)||{};did=a.deal_id||did||'';edit(id?'Aktivität bearbeiten':'Aufgabe planen',selectField('Verknüpfte Verkaufschance','deal_id',{'':'Allgemeine Aufgabe',...Object.fromEntries(data.deals.map(d=>[d.id,company(d.company_id).name+' · '+d.title]))},did,true)+field('Titel','title',a.title,'text',true,true)+selectField('Art','kind',KINDS,a.kind||'task')+ownerField(a.owner_id||(!id?(find('deals',did)?.owner_id||actor):''))+field('Fällig am','due_date',a.due_date||'','date')+field('Uhrzeit · optional','due_time',a.due_time||'','time')+selectField('Priorität','priority',{medium:'Normal',high:'Hoch',low:'Niedrig'},a.priority||'medium',true)+textarea('Beschreibung','notes',a.notes)+help('Ohne Datum bleibt die Aktivität unter „Ohne Datum“ sichtbar. Eine neue Aufgabe ersetzt bestehende Aufgaben nicht.'),v=>command('task',id,v,dialogRevision));const oldCompany=a.company_id;const fn=dialogSave;dialogSave=v=>fn({...v,company_id:v.deal_id?null:oldCompany});if(id&&a.status==='open')$('#fields').insertAdjacentHTML('beforeend',`<div class="span2">${button('Aktivität absagen','task-cancel',id,'small danger')}</div>`);$('#fields [data-action=task-cancel]')?.addEventListener('click',async()=>{if(confirm('Diese Aktivität absagen? Der Verlauf bleibt erhalten.'))try{await command('task_status',id,{status:'cancelled'},dialogRevision);$('#dialog').close();toast('Aktivität abgesagt.')}catch(e){$('#formError').textContent=e.message;$('#formError').hidden=false}})}
-function legacyEditor(key){const a=agenda().find(x=>x.key===key);if(!a)return; if(a.source==='task')return taskEditor(a.id);if(a.source==='followup'){edit('Rückruf / Wiedervorlage',help('Diese Wiedervorlage stammt aus der bisherigen Version. Neue Schritte planst du über „Aufgabe planen“.')+selectField('Nächster Schritt','next_action',ACTIONS,a.next_action,true)+field('Datum','due_date',a.date,'date')+field('Uhrzeit','due_time',a.time,'time'),v=>command('followup',a.id,v,dialogRevision));return}edit('Bestehenden Termin bearbeiten',field('Titel','title',a.title,'text',true,true)+field('Beginn','start_at',a.start_at,'datetime-local',false,true)+field('Ende','end_at',a.end_at,'datetime-local',false,true)+field('Ort','location',a.location,'text',true)+selectField('Status','status',{planned:'Geplant',done:'Erledigt',cancelled:'Abgesagt'},a.status==='open'?'planned':a.status,true)+textarea('Notizen','notes',a.notes),v=>command('appointment',a.id,v,dialogRevision))}
+function completeWorkEditor(key){
+ const a=agenda().find(item=>item.key===key&&item.status==='open');
+ if(!a)return toast('Diese Aufgabe ist nicht mehr offen. Bitte Liste aktualisieren.');
+ const related=a.company_id?data.deals.filter(d=>d.company_id===a.company_id&&nonWon(d)):[];
+ const selectedDeal=a.deal_id?find('deals',a.deal_id):related.length===1?related[0]:null;
+ const statusOptions={
+  keep:'Pipeline-Status beibehalten',
+  contacted:'Kontaktiert',
+  not_reached:'Nicht erreicht · Nachfassen in 3 Tagen',
+  interest:'Interesse vorhanden',
+  offer_email:'Angebot per E-Mail versendet',
+  offer_demo:'Demo versendet',
+  followup:'Neuen Rückruf einplanen',
+  no_interest:'Kein Interesse',
+  won:'Zusage · Bestandskunde / Projekt'
+ };
+ const workTypes={call:'Anruf durchgeführt',email:'E-Mail gesendet',meeting:'Termin vereinbart / durchgeführt',
+  offer:'Angebot versendet',demo:'Demo vorgestellt / versendet',work:'Projektarbeit',other:'Sonstiges'};
+ const workDefault=['call','email','meeting'].includes(a.kind)?a.kind:'work';
+ const dealSelect=related.length>1?
+  selectField('Verkaufschance','deal_id',{'':'Bitte zuordnen',...Object.fromEntries(related.map(d=>[d.id,d.title]))},selectedDeal?.id||'',true):
+  '<input type="hidden" name="deal_id" value="'+(selectedDeal?.id||'')+'">';
+ const fields=help('Erst dokumentieren, dann abschließen. Die Aktivität wird archiviert und der passende Lead auf Wunsch direkt weitergeschoben.')+
+  '<div class="span2 completion-origin"><span>AKTIVITÄT</span><strong>'+esc(a.title)+'</strong><small>'+esc(a.company_id?company(a.company_id).name:'Interne Aufgabe')+'</small></div>'+
+  selectField('Was hast du erledigt?','work_kind',workTypes,workDefault,true)+
+  textarea('Was kam dabei heraus? · Pflichtfeld','result')+
+  dealSelect+
+  selectField('Was passiert mit dem Lead?','pipeline_status',a.company_id?statusOptions:{keep:'Keine Pipeline-Änderung'},'keep',true)+
+  '<div class="span2 completion-followup-fields" id="completionFollowup" hidden>'+
+  field('Neuer Termin für den Rückruf','due_date','','date')+
+  field('Uhrzeit (optional)','due_time','','time')+'</div>'+
+  '<div class="span2" id="completionService" hidden>'+
+  selectField('Projektleistung bei Zusage','service_type',SERVICE_TYPES,'website',true)+'</div>'+
+  '<label class="span2 completion-confirm"><input type="checkbox" name="confirmed" value="yes" required>'+
+  '<span>Ja, die Angaben stimmen und diese Aufgabe ist wirklich erledigt.</span></label>';
+ edit('Aufgabe als erledigt dokumentieren',fields,async v=>{
+  if(!String(v.result||'').trim())throw Error('Beschreibe zuerst, was bei der Aufgabe herausgekommen ist.');
+  if(v.pipeline_status==='followup'&&!v.due_date)throw Error('Bitte Datum für den nächsten Rückruf wählen.');
+  if(v.pipeline_status!=='keep'&&related.length>1&&!v.deal_id)
+   throw Error('Bitte die passende Verkaufschance auswählen.');
+  if(!confirm('Aufgabe wirklich als erledigt bestätigen? Ergebnis und Pipeline-Änderung werden gespeichert.'))throw Error('Nicht bestätigt. Keine Änderung gespeichert.');
+  await command('complete_work',null,{...v,target:key},dialogRevision);
+ },'Erledigt bestätigen');
+ const status=$('#fields select[name=pipeline_status]');
+ const followup=$('#completionFollowup'),service=$('#completionService');
+ const update=()=>{
+  const follow=status?.value==='followup';
+  const won=status?.value==='won';
+  followup.hidden=!follow;
+  service.hidden=!won;
+  followup.querySelector('input[name=due_date]').required=follow;
+ };
+ if(status)status.addEventListener('change',update);
+ update();
+}
+function legacyEditor(key){const a=agenda().find(x=>x.key===key);if(!a)return;if(a.status==='archived')return restoreAppointment(a.id); if(a.source==='task')return taskEditor(a.id);if(a.source==='followup'){edit('Rückruf / Wiedervorlage',help('Diese Wiedervorlage stammt aus der bisherigen Version. Neue Schritte planst du über „Aufgabe planen“.')+selectField('Nächster Schritt','next_action',ACTIONS,a.next_action,true)+field('Datum','due_date',a.date,'date')+field('Uhrzeit','due_time',a.time,'time'),v=>command('followup',a.id,v,dialogRevision));return}edit('Bestehenden Termin bearbeiten',field('Titel','title',a.title,'text',true,true)+field('Beginn','start_at',a.start_at,'datetime-local',false,true)+field('Ende','end_at',a.end_at,'datetime-local',false,true)+field('Ort','location',a.location,'text',true)+selectField('Status','status',{planned:'Geplant',done:'Erledigt',cancelled:'Abgesagt'},a.status==='open'?'planned':a.status,true)+textarea('Notizen','notes',a.notes),v=>command('appointment',a.id,v,dialogRevision))}
 function memberEditor(id){const m=member(Number(id))||{};edit(id?'Teamprofil bearbeiten':'Teamprofil hinzufügen',help('Ein Arbeitsprofil dient der Zuordnung. Es ist kein Login und kein Nachweis, wer sich tatsächlich am Computer angemeldet hat.')+field('Name','name',m.name,'text',true,true)+(id?selectField('Status','active',{'1':'Aktiv','0':'Deaktiviert'},m.active,true):''),v=>command('member',id,{...v,active:v.active!=='0'},dialogRevision))}
 function projectEditor(id){
- const p=find('projects',id);
- edit('Projekt bearbeiten',field('Projektname','name',p.name,'text',true,true)+selectField('Status','status',PROJECTS,p.status)+selectField('Leistung','service_type',SERVICE_TYPES,p.service_type||'other')+ownerField(p.owner_id)+field('Zieltermin','deadline',p.deadline,'date',true)+textarea('Projektbeschreibung','notes',p.notes),v=>command('project',id,v,dialogRevision));
+ const p=find('projects',id);if(p?.status==='archived')return restoreProject(id);
+ edit('Projekt bearbeiten',field('Projektname','name',p.name,'text',true,true)+selectField('Status','status',PROJECTS,p.status)+selectField('Leistung','service_type',SERVICE_TYPES,p.service_type||'other')+ownerField(p.owner_id)+field('Zieltermin','deadline',p.deadline,'date',true)+field('Auftragswert in €','value',p.value??0,'number',true)+textarea('Projektbeschreibung','notes',p.notes),v=>command('project',id,v,dialogRevision));
 }
 function conversationEditor(cid,note=false,taskKey=''){
  const c=company(cid),ds=data.deals.filter(d=>d.company_id===cid),tasks=agenda().filter(a=>a.company_id===cid&&a.status==='open'),active=ds.filter(open),selected=active.length===1?active[0].id:ds.length===1&&nonWon(ds[0])?ds[0].id:'',origin=tasks.find(a=>a.key===taskKey),canStatus=!ds.length||ds.some(nonWon),returnToList=route.startsWith('company/');
@@ -329,7 +641,7 @@ function conversationEditor(cid,note=false,taskKey=''){
 function companyTaskEditor(cid){const ds=data.deals.filter(d=>d.company_id===cid&&open(d));edit('Aufgabe für '+company(cid).name,field('Was ist zu tun?','title','','text',true,true)+selectField('Art','kind',KINDS,'call')+ownerField(ds[0]?.owner_id||actor)+field('Fällig am','due_date','','date',false,true)+field('Uhrzeit · optional','due_time','','time')+textarea('Beschreibung','notes'),v=>command('task',null,{...v,company_id:cid,deal_id:ds.length===1?ds[0].id:null},dialogRevision),'Aufgabe planen')}
 async function importEditor(){edit('Excel / CSV importieren',help('Datei auswählen, Spalten zuordnen und importieren. Maximal 500 Datenzeilen je Tabellenblatt.')+'<div class="span2"><input id="importFile" class="file-input" type="file" accept=".csv,.xlsx"><div id="importSummary" class="section-gap"></div></div>',null,'Importieren');$('#save').disabled=true;$('#importFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;$('#save').disabled=true;$('#importSummary').textContent='Datei wird geprüft …';try{const sheets=await window.KaiserSheets.read(file),fields={company_name:'Firma / Unternehmen',industry:'Branche',city:'Ort',company_phone:'Firmentelefon',company_email:'Firmen-E-Mail',website:'Website',website_status:'Website-Signal',source_url:'Quell-URL',contact_name:'Ansprechpartner',contact_role:'Rolle',contact_phone:'Kontakt-Telefon',contact_email:'Kontakt-E-Mail',stage:'Status',value:'Potenzial €',score:'Lead Score',priority:'Priorität',next_follow_up:'Follow-up',need_summary:'Akquise-Aufhänger / Bedarf',notes:'Notizen',company_profile:'Firmenprofil',activity_status:'Prüfstatus',checked_at:'Geprüft am',activity_evidence:'Aktivitätsnachweis',evidence_urls:'Recherchequellen',website_observation:'Website-Beobachtung',benefit_hypothesis:'Nutzenhypothese',opening_line:'Gesprächseinstieg',priority_reason:'Prioritätsbegründung',research_uncertainty:'Offene Recherchefragen'},aliases={company_name:['firma','unternehmen','firmenname','company','betrieb','name'],city:['stadt','standort','city'],company_phone:['telefon','telefonnummer','tel','phone'],company_email:['email','e mail'],website:['webseite','homepage'],contact_name:['kontaktperson','inhaber'],stage:['phase','pipeline'],next_follow_up:['wiedervorlage','nachfassen']};let active=Object.keys(sheets)[0];const norm=s=>String(s).toLowerCase().replace(/[^a-z0-9äöüß]+/g,' ').trim();const paint=()=>{let [headers,...rows]=sheets[active];if(rows.length>500||!rows.length){$('#importSummary').innerHTML='<p>Bitte ein Tabellenblatt mit 1–500 Datenzeilen auswählen.</p><select id="importSheet">'+options(Object.fromEntries(Object.keys(sheets).map(k=>[k,k])),active)+'</select>';$('#importSheet').onchange=e=>{active=e.target.value;paint()};$('#save').disabled=true;return}$('#importSummary').innerHTML=`<p class="quiet-note">${rows.length} Zeilen erkannt. Dubletten und ausgeschlossene Firmen bleiben unverändert.</p><label class="field section-gap">Tabellenblatt<select id="importSheet">${options(Object.fromEntries(Object.keys(sheets).map(k=>[k,k])),active)}</select></label><div class="import-map section-gap">${Object.entries(fields).map(([k,label])=>{let i=headers.findIndex(h=>[k,label,...(aliases[k]||[])].some(x=>norm(x)===norm(h)));return `<label>${esc(label)}${k==='company_name'?' *':''}<select data-map="${esc(k)}">${options({'':'Nicht übernehmen',...Object.fromEntries(headers.map((h,j)=>[j,h||'Spalte '+(j+1)]))},i<0?'':String(i))}</select></label>`}).join('')}</div>`;$('#importSheet').onchange=e=>{active=e.target.value;paint()};$('#save').disabled=false;dialogSave=async()=>{let mapping={};$$('[data-map]').forEach(x=>{if(x.value!=='')mapping[x.dataset.map]=Number(x.value)});if(mapping.company_name===undefined)throw Error('Bitte die Firmenspalte auswählen.');let r=await request('/api/import/commit',{method:'POST',body:JSON.stringify({filename:file.name,sheet:active,headers,rows,mapping,revision:dialogRevision})});await reload();setTimeout(()=>toast(`${r.imported} neu · ${r.duplicates} Dubletten · ${r.excluded} ausgeschlossen · ${r.errors} fehlerhafte Zeilen`),100);if(r.errors)setTimeout(()=>edit('Importbericht',help('Fehlerhafte Zeilen wurden nicht übernommen.')+`<div class="span2 import-preview">${r.details.map(x=>`<p>Zeile ${esc(x.row)}: ${esc(x.error)}</p>`).join('')}</div>`,async()=>{},'Schließen'),150)}};paint()}catch(err){$('#importSummary').textContent=err.message;$('#save').disabled=true}}}
 async function restoreEditor(){edit('V9-Backup wiederherstellen',help('Ersetzt den aktuellen Datenbestand vollständig. Vorher wird automatisch eine lokale Sicherung erstellt. Verwende ein vollständiges V9-JSON-Backup.')+'<div class="span2"><input id="restoreFile" class="file-input" type="file" accept=".json"></div>'+field('Zur Bestätigung WIEDERHERSTELLEN eingeben','confirm','','text',true,true),async v=>{if(v.confirm!=='WIEDERHERSTELLEN')throw Error('Bitte die Bestätigung exakt eingeben.');const f=$('#restoreFile').files[0];if(!f)throw Error('Bitte eine Backup-Datei auswählen.');let backup;try{backup=JSON.parse(await f.text())}catch{throw Error('Die Datei enthält kein gültiges JSON.')}await request('/api/crm-restore',{method:'POST',body:JSON.stringify({backup,revision:dialogRevision})});await reload()},'Daten wiederherstellen')}
-async function act(action,id){switch(action){case'project-files':return projectFilesEditor(Number(id));case'pipeline-contact':return conversationEditor(Number(id));case'pipeline-missed':return pipelineMove(Number(id),'not_reached');case'pipeline-reached':return pipelineMove(Number(id),'reached');case'pipeline-offer':return pipelineOfferEditor(Number(id));case'pipeline-win':return pipelineWonEditor(Number(id));case'pipeline-decline':return pipelineDeclineEditor(Number(id));case'appointment-new':return appointmentEditor(null,id?Number(id):null);case'dashboard-category':{if(id==='won')return navigateTo('clients',{filter:'all'});if(id==='no_interest'||id==='stopped')return navigateTo(id);mobilePipelineStage=id==='offer_email'?'offer_email':id;return navigateTo('sales',{filter:id==='lost'?'lost':'open',view:'board'});}case'go-today':return navigateTo('activities',{filter:'due',scope:'all'});case'go-planned':return navigateTo('activities',{filter:'upcoming',scope:'all'});case'go-done':return navigateTo('activities',{filter:'done',scope:'all'});case'go-unplanned':return navigateTo('contacts',{filter:'unplanned'});case'open-company':navigateTo('company/'+id);return;case'missing-firms':$('#missingFirms').scrollIntoView({behavior:'smooth',block:'start'});return;case'task-contact':{const a=agenda().find(x=>x.key===id);if(a)return conversationEditor(a.company_id,false,a.key);return}case'quick-followup':return quickStatusEditor(Number(id),'followup');case'quick-no-interest':return quickStatusEditor(Number(id),'no_interest');case'quick-open':return quickStatusEditor(Number(id),'open');case'conversation':return conversationEditor(Number(id));case'company-note':return conversationEditor(Number(id),true);case'company-task':return companyTaskEditor(Number(id));case'company-new':return companyEditor();case'company-edit':return companyEditor(Number(id));case'contact-new':return contactEditor();case'contact-edit':return contactEditor(Number(id));case'contact-company':return contactEditor(null,Number(id));case'deal-new':return dealEditor();case'deal-edit':return dealEditor(Number(id));case'deal-company':return dealEditor(null,Number(id));case'stage':return stageEditor(Number(id));case'log':return logEditor(Number(id));case'note':return logEditor(Number(id),true);case'task-new':return taskEditor();case'task-for':return taskEditor(null,Number(id));case'activity-edit':return legacyEditor(id);case'member':return memberEditor(id?Number(id):null);case'project':return projectEditor(Number(id));case'import':if(data.session.role!=='admin')return toast('Nur Administration.');return importEditor();case'restore':return restoreEditor();case'backup':await request('/api/backup/checkpoint',{method:'POST',body:'{}'});return toast('Lokale Sicherung erstellt.');case'complete':{const a=agenda().find(a=>a.key===id);if(!a)return;if(a.source==='task')await command('task_status',a.id,{status:'done'});else if(a.source==='appointment')await command('appointment',a.id,{status:'done'});else await command('complete_followup',a.id,{});return toast('Gespeichert unter Aufgaben & Termine → Erledigt.')}case'reopen':{const a=agenda().find(a=>a.key===id||a.source==='task'&&String(a.id)===String(id));if(!a)return;if(a.source==='appointment')await command('appointment',a.id,{status:'planned'});else await command('task_status',a.id,{status:'open'});return toast('Aufgabe wieder geöffnet – unter Alle offenen.');}case'unplanned':case'unassigned':{navigateTo('sales',{scope:action==='unassigned'?'none':scope,filter:action==='unplanned'?'unplanned':'open'});return}case'stop':{const c=company(Number(id));edit(c.do_not_contact?'Kontaktstopp aufheben':'Kontaktstopp setzen',help(c.do_not_contact?'Der Kontaktstopp wird für alle Vorgänge dieses Unternehmens aufgehoben. Verlorene Chancen bleiben geschlossen; alte Termine werden nicht neu angelegt.':'Gilt für das gesamte Unternehmen. Alte Wiedervorlagen werden entfernt. Bestehende Aufgaben und Termine bleiben zur bewussten Prüfung sichtbar.')+textarea('Begründung','reason'),v=>command('stop',c.id,{...v,stop:!c.do_not_contact},dialogRevision),c.do_not_contact?'Kontakt freigeben':'Kontaktstopp setzen');return}}}
+async function act(action,id){switch(action){case'customer-win':return customerWinEditor(Number(id));case'customer-reopen':return customerReopenEditor(Number(id));case'project-archive':return archiveProject(Number(id));case'project-restore':return restoreProject(Number(id));case'appointment-cancel':return cancelAppointment(Number(id));case'appointment-archive':return archiveAppointment(Number(id));case'appointment-restore':return restoreAppointment(Number(id));case'project-files':return projectFilesEditor(Number(id));case'pipeline-contact':return conversationEditor(Number(id));case'pipeline-missed':return pipelineMove(Number(id),'not_reached');case'pipeline-reached':return pipelineMove(Number(id),'reached');case'pipeline-offer':return pipelineOfferEditor(Number(id));case'pipeline-win':return pipelineWonEditor(Number(id));case'pipeline-decline':return pipelineDeclineEditor(Number(id));case'appointment-new':return appointmentEditor(null,id?Number(id):null);case'dashboard-category':return selectDashboardCategory(id);case'go-today':return navigateTo('activities',{filter:'due',scope:'all'});case'go-planned':return navigateTo('activities',{filter:'upcoming',scope:'all'});case'go-done':return navigateTo('activities',{filter:'done',scope:'all'});case'go-unplanned':return navigateTo('contacts',{filter:'unplanned'});case'open-company':navigateTo('company/'+id);return;case'missing-firms':$('#missingFirms').scrollIntoView({behavior:'smooth',block:'start'});return;case'task-contact':{const a=agenda().find(x=>x.key===id);if(a)return conversationEditor(a.company_id,false,a.key);return}case'quick-followup':return quickStatusEditor(Number(id),'followup');case'quick-no-interest':return quickStatusEditor(Number(id),'no_interest');case'quick-open':return quickStatusEditor(Number(id),'open');case'conversation':return conversationEditor(Number(id));case'company-note':return conversationEditor(Number(id),true);case'company-task':return companyTaskEditor(Number(id));case'company-new':return companyEditor();case'company-edit':return companyEditor(Number(id));case'contact-new':return contactEditor();case'contact-edit':return contactEditor(Number(id));case'contact-company':return contactEditor(null,Number(id));case'deal-new':return dealEditor();case'deal-edit':return dealEditor(Number(id));case'deal-company':return dealEditor(null,Number(id));case'stage':return stageEditor(Number(id));case'log':return logEditor(Number(id));case'note':return logEditor(Number(id),true);case'task-new':return taskEditor();case'task-for':return taskEditor(null,Number(id));case'activity-edit':return legacyEditor(id);case'member':return memberEditor(id?Number(id):null);case'project':return projectEditor(Number(id));case'import':if(data.session.role!=='admin')return toast('Nur Administration.');return importEditor();case'restore':return restoreEditor();case'backup':await request('/api/backup/checkpoint',{method:'POST',body:'{}'});return toast('Lokale Sicherung erstellt.');case'complete':return completeWorkEditor(id);case'reopen':{const a=agenda().find(a=>a.key===id||a.source==='task'&&String(a.id)===String(id));if(!a)return;if(a.source==='appointment')await command('appointment',a.id,{status:'planned'});else await command('task_status',a.id,{status:'open'});return toast('Aufgabe wieder geöffnet – unter Alle offenen.');}case'unplanned':case'unassigned':{navigateTo('sales',{scope:action==='unassigned'?'none':scope,filter:action==='unplanned'?'unplanned':'open'});return}case'stop':{const c=company(Number(id));edit(c.do_not_contact?'Kontaktstopp aufheben':'Kontaktstopp setzen',help(c.do_not_contact?'Der Kontaktstopp wird für alle Vorgänge dieses Unternehmens aufgehoben. Verlorene Chancen bleiben geschlossen; alte Termine werden nicht neu angelegt.':'Gilt für das gesamte Unternehmen. Alte Wiedervorlagen werden entfernt. Bestehende Aufgaben und Termine bleiben zur bewussten Prüfung sichtbar.')+textarea('Begründung','reason'),v=>command('stop',c.id,{...v,stop:!c.do_not_contact},dialogRevision),c.do_not_contact?'Kontakt freigeben':'Kontaktstopp setzen');return}}}
 $('#form').addEventListener('input',()=>dialogDirty=true);
 $('#form').onsubmit=async e=>{e.preventDefault();if(!dialogSave)return;$('#save').disabled=true;$('#formError').hidden=true;try{await dialogSave(Object.fromEntries(new FormData(e.target)));dialogDirty=false;$('#dialog').close();toast('Gespeichert.')}catch(err){$('#formError').textContent=err.message;$('#formError').hidden=false;if(err.status===409){const b=document.createElement('button');b.type='button';b.className='button small';b.textContent='Aktuellen Datenstand laden';b.onclick=async()=>{try{await reload();dialogRevision=data.revision;b.remove();$('#formError').textContent='Datenstand aktualisiert. Deine Eingabe wurde beibehalten. Prüfe sie anhand der aktualisierten Ansicht und speichere erneut.'}catch(e){toast(e.message)}};$('#formError').appendChild(b)}}finally{$('#save').disabled=false}};
 $('#closeDialog').onclick=closeDialog;$('#cancelDialog').onclick=closeDialog;$('#dialog').addEventListener('cancel',e=>{e.preventDefault();closeDialog()});$('#menu').onclick=()=>$('.sidebar').classList.toggle('open');$('#logout').onclick=async()=>{try{await request('/api/logout',{method:'POST',body:'{}'});location.replace('/login.html')}catch(e){toast(e.message)}};$('#refresh').onclick=()=>reload().catch(e=>toast(e.message));$('#loadUpdates').onclick=()=>reload().catch(e=>toast(e.message));
@@ -337,6 +649,6 @@ $('#globalSearch').oninput=e=>{const q=e.target.value.trim().toLowerCase(),box=$
 document.addEventListener('click',e=>{if(!e.target.closest('.global-search'))$('#searchResults').hidden=true;if(!e.target.closest('.sidebar')&&!e.target.closest('#menu'))$('.sidebar').classList.remove('open')});$('#globalSearch').addEventListener('keydown',e=>{if(e.key==='Escape')$('#searchResults').hidden=true;if(e.key==='Enter')$('#searchResults a')?.click()});window.addEventListener('popstate',navigate);window.addEventListener('hashchange',()=>{if((location.hash.slice(1)||'overview')!==route)navigate()});window.addEventListener('beforeunload',e=>{if($('#dialog').open&&dialogDirty){e.preventDefault();e.returnValue=''}});
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="#"]');if(!a||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||a.target==='_blank')return;const next=a.getAttribute('href').slice(1);if(!/^(overview|activities|sales|contacts|projects|settings|deal\/\d+|company\/\d+)$/.test(next))return;e.preventDefault();navigateTo(next)});
 window.addEventListener('scroll',()=>{if(restoringNavigation)return;clearTimeout(navigationScrollTimer);navigationScrollTimer=setTimeout(rememberScreen,150)},true);
-(async()=>{route=location.hash.slice(1)||'overview';filter=route==='contacts'?'companies':route==='activities'?'due':'open';const saved=history.state?.kaiserCRM&&history.state.screen?.route===route?history.state.screen:null;if(saved){scope=saved.scope??'all';query=saved.query??'';filter=saved.filter;view=saved.view??'board';page=saved.page||1}try{await reload();if(saved)showScreen(saved)}catch(e){$('#main').innerHTML=blank('CRM nicht erreichbar',e.message)}})();
+(async()=>{route=location.hash.slice(1)||'overview';filter=route==='contacts'?'companies':route==='activities'?'due':route==='clients'?'all':'open';const saved=history.state?.kaiserCRM&&history.state.screen?.route===route?history.state.screen:null;if(saved){scope=saved.scope??'all';query=saved.query??'';filter=saved.filter;view=saved.view??'board';page=saved.page||1}try{await reload();if(saved)showScreen(saved)}catch(e){$('#main').innerHTML=blank('CRM nicht erreichbar',e.message)}})();
 async function syncTeam(){if(!data||document.hidden||loading)return;loading=true;const prior=data.revision;try{const fresh=await request('/api/crm');if(data.revision!==prior)return;if(fresh.revision!==data.revision){if($('#dialog').open||document.activeElement?.matches('input,textarea,select')||document.querySelector('.dragging')){$('#updateBanner').hidden=false;$('#syncStatus').textContent='Neue Änderungen verfügbar'}else{applySnapshot(fresh)}}else{$('#syncStatus').textContent='Synchronisiert · '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}}catch(e){$('#syncStatus').textContent='Verbindung unterbrochen'}finally{loading=false}}
 setInterval(syncTeam,4000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncTeam()});
