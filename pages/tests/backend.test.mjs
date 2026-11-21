@@ -53,3 +53,10 @@ test('blocked lead cannot be moved and no-interest remains visible as dispositio
  run(snap,actor,'stop',1,{stop:true});
  assert.throws(()=>run(snap,staff,'pipeline',1,{status:'interest'}),/Kontaktstopp/);
 });
+
+test('importing a won customer creates its linked project exactly once',()=>{
+ const s=base();const r=importRows(s,actor,{headers:['Firma','Ort','Status','Wert'],mapping:{company_name:0,city:1,stage:2,value:3},rows:[['Gewonnen GmbH','Berlin','gewonnen','1.200,50'],['Gewonnen GmbH','Berlin','gewonnen','1.200,50']]},now);
+ assert.equal(r.report.imported,1);assert.equal(r.report.duplicates,1);
+ const d=r.patches.find(p=>p.table==='deals').values,project=r.patches.find(p=>p.table==='projects').values;
+ assert.equal(d.stage,'won');assert.equal(project.deal_id,d.id);assert.equal(project.company_id,d.company_id);assert.equal(project.value,1200.5);
+});

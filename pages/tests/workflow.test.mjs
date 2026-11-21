@@ -97,3 +97,48 @@ test('multiple offers must be disambiguated before marking company as won',()=>{
  assert.equal(s.deals[0].stage,'new');
  assert.equal(s.deals[1].stage,'won');
 });
+test('contact stop cannot be bypassed via the legacy won endpoint or task reopening',()=>{
+ const s=fixture();
+ execute(s,admin,'deal',null,{company_id:1,title:'Website',value:1200});
+ execute(s,admin,'task',null,{company_id:1,deal_id:1,title:'Rückruf',kind:'call'});
+ execute(s,admin,'stop',1,{stop:true});
+ const before=structuredClone(s);
+ assert.throws(()=>execute(s,staff,'stage',1,{stage:'interest',status:'won'}),/Kontaktstopp/);
+ assert.throws(()=>execute(s,staff,'task_status',1,{status:'open'}),/Kontaktstopp/);
+ assert.deepEqual(s,before,'rejected operations must not partially change records');
+ execute(s,staff,'task_status',1,{status:'cancelled'});
+ assert.equal(s.tasks[0].status,'cancelled');
+});
+test('task and appointment reject cross-company deal links',()=>{
+ const s=fixture();s.companies.push({id:2,name:'Andere Firma'});
+ execute(s,admin,'deal',null,{company_id:1,title:'Website'});
+ for(const op of ['task','appointment'])assert.throws(()=>execute(s,admin,op,null,{company_id:2,deal_id:1,title:'Falsch',start_at:'2026-11-25T10:00',end_at:'2026-11-25T11:00'}),/nicht zur Firma/);
+ assert.equal(s.tasks.length,0);assert.equal(s.appointments.length,0);
+});
+test('appointments reject calendar rollover dates and retain previous state',()=>{
+ const s=fixture();
+ for(const start of ['2026-02-30T10:00','2026-11-25T24:00','2026-11-25T10:61']){
+  assert.throws(()=>execute(s,admin,'appointment',null,{title:'Termin',start_at:start,end_at:'2026-11-26T11:00'}),/Ungültig/);
+ }
+ assert.equal(s.appointments.length,0);
+});
+test('project and linked deal values stay consistent after editing from either side',()=>{
+ const s=fixture();execute(s,admin,'customer_win',1,{confirmed:true,value:1000});
+ execute(s,admin,'project',1,{name:'Website',status:'active',value:1400,service_type:'website'});
+ assert.equal(s.projects[0].value,1400);assert.equal(s.deals[0].value,1400);
+ execute(s,admin,'deal',1,{title:'Website',value:1600});
+ assert.equal(s.projects[0].value,1600);assert.equal(s.deals[0].value,1600);
+});
+test('reopening an old closed lead does not reactivate its historic callback',()=>{
+ const s=fixture();s.deals.push({id:1,company_id:1,stage:'contacted',disposition:'no_interest',next_follow_up:'2026-01-01',next_action:'call'});
+ assert.throws(()=>execute(s,admin,'complete_followup',1,{}),/abgeschlossen/);
+ execute(s,admin,'quick_status',1,{status:'open'});
+ assert.equal(s.deals[0].next_follow_up,'');assert.equal(s.deals[0].disposition,'active');
+});
+test('automatic callback uses Berlin calendar across midnight and daylight saving',()=>{
+ const s=fixture();s.deals.push({id:1,company_id:1,stage:'new',disposition:'active'});
+ for(const [instant,expected] of [['2026-11-21T23:30:00Z','2026-11-25'],['2026-03-28T23:30:00Z','2026-04-01']]){
+  const {patches}=command(s,staff,{op:'pipeline',id:1,values:{status:'not_reached'}},new Date(instant));
+  assert.equal(patches.find(p=>p.table==='deals').values.next_follow_up,expected);
+ }
+});

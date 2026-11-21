@@ -47,6 +47,14 @@ export async function handleProjectFiles({req,c,session,projects,env={}}){
   const maxResumableBytes=resumableLimitBytes(env);
   if(pathname==='/api/project-files'&&method==='GET'){
    const id=projectId(url.searchParams.get('project'));belongs(projects,id);
+   // Object listing can return [] for a bucket that does not exist.
+   // Check the bucket itself before presenting a usable upload form.
+   const bucketResponse=await storage(c,'bucket/'+BUCKET);
+   let bucket;try{bucket=await bucketResponse.json()}catch{}
+   if(bucketResponse.status===404||String(bucket?.statusCode)==='404'||bucket?.error==='Bucket not found')
+     return answer({files:[],setup_required:true,admin:session.role==='admin',upload_limit_bytes:maxResumableBytes});
+   if(!bucketResponse.ok||bucket?.id!==BUCKET)throw denied(502,'Projektspeicher konnte nicht geprüft werden.');
+   if(bucket.public!==false)throw denied(503,'Projektspeicher muss privat konfiguriert sein.');
    const r=await storage(c,'object/list/'+BUCKET,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prefix:folder(id),limit:200,offset:0,sortBy:{column:'created_at',order:'desc'}})});
    if(r.status===404)return answer({files:[],setup_required:true,admin:session.role==='admin',upload_limit_bytes:maxResumableBytes});
    if(!r.ok)throw denied(502,'Projektdateien konnten nicht geladen werden.');

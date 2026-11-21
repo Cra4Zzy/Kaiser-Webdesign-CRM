@@ -6,7 +6,7 @@ const icon=n=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[n]||
 const pages={overview:'Übersicht',sales:'Lead-Pipeline',activities:'Aufgaben',appointments:'Termine',contacts:'Firmen',projects:'Projekte',clients:'Bestandskunden',no_interest:'Kein Interesse',stopped:'Kontaktstopp',settings:'Einstellungen'};
 Object.assign(icons,{appointments:icons.meeting,clients:icons.company,no_interest:icons.contacts,stopped:icons.clock});
 const PHASES={new:'Neu',contacted:'Kontaktversuch',interest:'Interesse',offer_email:'E-Mail-Angebot',offer_demo:'Demo zugesendet',followup:'Nachfassen'};
-const PHASE_COLORS=['#a4b5c2','#81a5ad','#5d9a84','#8d82c2','#796aba','#d79b68'];
+const PHASE_COLORS=['#2563eb','#0891b2','#0d9488','#7c3aed','#c026d3','#d97706'];
 const SERVICE_TYPES={other:'Noch zuordnen',website:'Website',app:'App',social_media:'Social Media',mixed:'Kombination'};
 let mobilePipelineStage='all';
 let dashboardCategory='new';
@@ -69,7 +69,7 @@ function applySnapshot(fresh){if(fresh?.version!=='9.9.1'||!fresh.session)throw 
 async function reload(){applySnapshot(await request('/api/crm'))}
 async function command(op,id,values,revision=data.revision){const r=await request('/api/crm',{method:'POST',body:JSON.stringify({op,id:id||null,values,actor_id:actor,revision})});await reload();return r}
 let agendaCache=null, agendaRevision='';
-function agenda(){if(agendaRevision===data.revision&&agendaCache)return agendaCache;const rows=data.tasks.map(t=>({...t,key:'task:'+t.id,source:'task',date:t.due_date,time:t.due_time,kind:t.kind||'task'}));for(const a of data.appointments)rows.push({...a,key:'appointment:'+a.id,source:'appointment',date:a.start_at.slice(0,10),time:a.start_at.slice(11,16),status:a.status==='planned'?'open':a.status});for(const d of data.deals)if(d.next_follow_up&&open(d))rows.push({id:d.id,key:'followup:'+d.id,source:'followup',title:ACTIONS[d.next_action]||'Wiedervorlage',date:d.next_follow_up,time:d.next_follow_up_time,kind:d.next_action==='call'?'call':'task',status:'open',owner_id:d.owner_id,deal_id:d.id,company_id:d.company_id,notes:'Aus deiner bisherigen Wiedervorlage übernommen.',next_action:d.next_action});agendaRevision=data.revision;return agendaCache=rows.sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')||(a.time||'23:59').localeCompare(b.time||'23:59')||a.id-b.id)}
+function agenda(){if(agendaRevision===data.revision&&agendaCache)return agendaCache;const rows=data.tasks.map(t=>({...t,key:'task:'+t.id,source:'task',date:t.due_date,time:t.due_time,kind:t.kind||'task'}));for(const a of data.appointments)rows.push({...a,key:'appointment:'+a.id,source:'appointment',date:a.start_at.slice(0,10),time:a.start_at.slice(11,16),status:a.status==='planned'?'open':a.status});for(const d of data.deals)if(d.next_follow_up&&open(d)&&!blocked(d))rows.push({id:d.id,key:'followup:'+d.id,source:'followup',title:ACTIONS[d.next_action]||'Wiedervorlage',date:d.next_follow_up,time:d.next_follow_up_time,kind:d.next_action==='call'?'call':'task',status:'open',owner_id:d.owner_id,deal_id:d.id,company_id:d.company_id,notes:'Aus deiner bisherigen Wiedervorlage übernommen.',next_action:d.next_action});agendaRevision=data.revision;return agendaCache=rows.sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')||(a.time||'23:59').localeCompare(b.time||'23:59')||a.id-b.id)}
 const pending=d=>agenda().filter(a=>a.deal_id===d.id&&a.status==='open');
 function taskRow(a){return `<div class="task-row"><button class="check" data-action="complete" data-id="${a.key}" aria-label="${esc(a.title)} erledigen">${a.status==='done'?'✓':''}</button><span class="task-icon">${icon(a.kind)}</span><div class="task-copy"><button class="row-button" data-action="activity-edit" data-id="${a.key}"><strong>${esc(a.title)}</strong></button><small>${a.deal_id?`<a class="main-link" href="#company/${a.company_id}">${esc(company(a.company_id).name)}</a>`:esc(company(a.company_id).name)}</small></div><span class="due">${due(a)}</span></div>`}
 function workRow(a){return `<div class="task-row"><span class="task-icon">${icon(a.kind)}</span><div class="task-copy"><strong>${esc(a.title)}</strong><small>${esc(company(a.company_id).name)} · ${member(a.owner_id)?esc(member(a.owner_id).name):'Nicht zugewiesen'}</small></div>${due(a)}${a.company_id?`<a class="button small" href="#company/${a.company_id}">Firma öffnen</a>`:button('Aufgabe öffnen','activity-edit',a.key,'small')}</div>`}
@@ -140,16 +140,16 @@ function renderProjects(){
   '<thead><tr><th>Projekt / Unternehmen</th><th>Leistung</th><th>Status</th><th>Auftragswert</th><th>Termin</th><th>Aktionen</th></tr></thead>');
 }
 const DASHBOARD_GROUPS=[
- {key:'new',label:'Neue Leads',tone:'#a9bac1'},
- {key:'contacted',label:'Kontaktaufnahme',tone:'#7a9ea8'},
- {key:'interest',label:'Interesse',tone:'#4f9680'},
- {key:'offer_email',label:'E-Mail-Angebote',tone:'#9183b5'},
- {key:'offer_demo',label:'Angebotsdemos',tone:'#786ab0'},
- {key:'followup',label:'Nachfassen',tone:'#d19b65'},
- {key:'won',label:'Bestandskunden',tone:'#348170'},
- {key:'no_interest',label:'Kein Interesse',tone:'#c7a49d'},
- {key:'stopped',label:'Kontaktstopp',tone:'#88949d'},
- {key:'lost',label:'Sonstige Abschlüsse',tone:'#bbc4cc'}
+ {key:'new',label:'Neue Leads',tone:'#2563eb'},
+ {key:'contacted',label:'Kontaktaufnahme',tone:'#0891b2'},
+ {key:'interest',label:'Interesse',tone:'#0d9488'},
+ {key:'offer_email',label:'E-Mail-Angebote',tone:'#7c3aed'},
+ {key:'offer_demo',label:'Angebotsdemos',tone:'#c026d3'},
+ {key:'followup',label:'Nachfassen',tone:'#d97706'},
+ {key:'won',label:'Bestandskunden',tone:'#05943f'},
+ {key:'no_interest',label:'Kein Interesse',tone:'#c75b12'},
+ {key:'stopped',label:'Kontaktstopp',tone:'#dc2626'},
+ {key:'lost',label:'Verloren / geschlossen',tone:'#475569'}
 ];
 function dashboardGroupForDeal(d){
  if(blocked(d))return 'stopped';
@@ -168,7 +168,7 @@ function dashboardDetails(key){
  return '<div class="dashboard-detail-head"><div class="dashboard-detail-heading"><i style="background:'+g.tone+'"></i><div><span class="eyebrow">DETAILANSICHT · LIVE</span><h3>'+esc(g.label)+'</h3></div></div><span class="dashboard-detail-total">'+rows.length+' '+(rows.length===1?'Vorgang':'Vorgänge')+'</span></div>'+
   (rows.length?
    '<div class="dashboard-detail-rows">'+rows.map(d=>{
-    const c=company(d.company_id),next=d.next_follow_up?'<span class="dashboard-detail-date">Nächster Schritt: '+esc(dateLabel(d.next_follow_up))+'</span>':'';
+    const c=company(d.company_id),next=d.next_follow_up&&open(d)&&!blocked(d)?'<span class="dashboard-detail-date">Nächster Schritt: '+esc(dateLabel(d.next_follow_up))+'</span>':'';
     const priority=d.priority==='high'?'<span class="dashboard-detail-priority">Hohe Priorität</span>':'';
     return '<div class="dashboard-detail-row"><div class="dashboard-detail-copy"><a href="#company/'+d.company_id+'" class="dashboard-detail-name">'+esc(c.name)+'</a><small>'+esc(d.title||'Kundenkontakt')+'</small></div><div class="dashboard-detail-extra">'+priority+next+'</div><a class="dashboard-detail-open" href="#company/'+d.company_id+'" aria-label="Firmenakte öffnen: '+esc(c.name)+'">Öffnen</a></div>';
    }).join('')+'</div>':
@@ -180,6 +180,8 @@ function selectDashboardCategory(key){
  const box=$('#dashboardSelection');
  if(!box)return;
  box.innerHTML=dashboardDetails(key);
+ const group=DASHBOARD_GROUPS.find(g=>g.key===key),count=data.deals.filter(d=>dashboardGroupForDeal(d)===key).length;
+ const center=$('#dashboardCenter');if(center){center.style.setProperty('--status-color',group.tone);center.innerHTML=dashboardCenter(group,count,data.deals.length);}
  box.classList.remove('dashboard-detail-reveal');
  void box.offsetWidth;
  box.classList.add('dashboard-detail-reveal');
@@ -195,48 +197,53 @@ function wirePipeline(){
  $$('[data-drag-deal]').forEach(card=>{card.addEventListener('dragstart',e=>{dragged=Number(card.dataset.dragDeal);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(dragged));card.classList.add('dragging')});card.addEventListener('dragend',()=>{dragged=null;$$('.drop-active,.dragging').forEach(x=>x.classList.remove('drop-active','dragging'))})});
  $$('[data-drop-stage]').forEach(col=>{col.addEventListener('dragover',e=>{if(dragged!==null){e.preventDefault();e.dataTransfer.dropEffect='move';col.classList.add('drop-active')}});col.addEventListener('dragleave',e=>{if(!col.contains(e.relatedTarget))col.classList.remove('drop-active')});col.addEventListener('drop',async e=>{e.preventDefault();col.classList.remove('drop-active');const id=dragged;dragged=null;if(id===null)return;const d=find('deals',id),stage=col.dataset.dropStage;if(!d||!open(d)||blocked(d)||phase(d)===stage)return;try{if(stage==='followup'){quickStatusEditor(d.company_id,'followup',d.id);return}await pipelineMove(d.id,stage)}catch(err){toast(err.message)}})});
 }
+function dashboardCenter(group,count,total){
+ const percent=total?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(count/total*100):'0';
+ return '<span class="donut-center-label">'+esc(group.label)+'</span><strong>'+count+'</strong><span class="donut-center-share">'+percent+' % aller Vorgänge</span>';
+}
 function renderOverview(){
  const items=agenda(),dueNow=items.filter(a=>a.status==='open'&&a.date&&a.date<=today()),
- calls=items.filter(a=>a.status==='open'&&a.kind==='call'),
- fresh=data.deals.filter(d=>d.disposition==='active'&&['new','attempted','contacted'].includes(d.stage)).length;
+ planned=items.filter(a=>a.status==='open'&&a.date>today());
  const groups=DASHBOARD_GROUPS.map(g=>({...g,count:data.deals.filter(d=>dashboardGroupForDeal(d)===g.key).length}));
  const total=data.deals.length,circumference=2*Math.PI*74;
+ const selectedGroup=groups.find(g=>g.key===dashboardCategory)||groups[0];
  let offset=0;
  const slices=groups.map(g=>{
   const dash=total?g.count/total*circumference:0;
   if(!g.count)return '';
-  const selected=dashboardCategory===g.key;
+  const selected=dashboardCategory===g.key,gap=Math.min(1.6,dash*.15);
   const html='<circle class="donut-arc'+(selected?' selected':'')+'" r="74" cx="100" cy="100" fill="none" stroke="'+g.tone+
-    '" stroke-width="19" stroke-dasharray="'+dash.toFixed(3)+' '+(circumference-dash).toFixed(3)+'" stroke-dashoffset="'+(-offset).toFixed(3)+
+    '" stroke-width="24" stroke-dasharray="'+(dash-gap).toFixed(3)+' '+(circumference-dash+gap).toFixed(3)+'" stroke-dashoffset="'+(-offset-gap/2).toFixed(3)+
     '" transform="rotate(-90 100 100)" role="button" tabindex="0" aria-pressed="'+selected+'" aria-label="'+esc(g.label)+': '+g.count+
     '" data-action="dashboard-category" data-id="'+g.key+'"><title>'+esc(g.label)+' · '+g.count+'</title></circle>';
   offset+=dash;return html;
  }).join('');
- const legend=groups.map(g=>'<button type="button" class="donut-legend-item'+(dashboardCategory===g.key?' selected':'')+
+ const legend=groups.map(g=>'<button type="button" style="--status-color:'+g.tone+'" class="donut-legend-item'+(dashboardCategory===g.key?' selected':'')+
   '" data-action="dashboard-category" data-id="'+g.key+'" aria-pressed="'+(dashboardCategory===g.key)+
-  '"><i style="background:'+g.tone+'"></i><span>'+esc(g.label)+'</span><strong>'+g.count+'</strong></button>').join('');
+  '"><i aria-hidden="true"></i><span>'+esc(g.label)+'</span><strong>'+g.count+'</strong></button>').join('');
  const tasks=dueNow.slice(0,4).map(a=>'<div class="dashboard-todo-item"><span class="dashboard-todo-icon">'+icon(a.kind)+'</span>'+
   '<div class="dashboard-todo-label"><a href="#'+(a.company_id?'company/'+a.company_id:'activities')+'">'+esc(a.title)+'</a>'+
   '<small>'+esc(a.company_id?company(a.company_id).name:'Allgemeine Aufgabe')+' · '+esc(dateLabel(a.date))+'</small></div>'+
   '<button type="button" class="dashboard-todo-done" data-action="complete" data-id="'+esc(a.key)+'">Erledigt</button></div>').join('');
- return '<section class="dashboard-greeting"><div><span class="eyebrow">KAISER WEBDESIGN · SALES WORKSPACE</span><h1>Dein Überblick.</h1><p>'+
+ return '<section class="dashboard-greeting"><div><span class="eyebrow">KAISER WEBDESIGN · TEAM WORKSPACE</span><h1>Alles im Blick.</h1><p>'+
   new Date().toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+
-  ' · Alle Vorgänge. Ein klarer nächster Schritt.</p></div><a href="#sales" class="button primary">Zur Lead-Pipeline</a></section>'+
-  '<div class="dashboard-kpis"><button data-action="go-today"><small>Jetzt fällig</small><strong>'+dueNow.length+
-  '</strong><span>Aufgaben & Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Kontaktversuche</small><strong>'+fresh+
-  '</strong><span>Offene Erstkontakte</span></button><button data-action="go-planned"><small>Anrufe offen</small><strong>'+calls.length+
-  '</strong><span>Geplante Gespräche</span></button><button data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>'+
-  (groups.find(g=>g.key==='won')?.count||0)+'</strong><span>Bestandskunden</span></button></div>'+
+  '</p></div><a href="#sales" class="button primary">Zur Lead-Pipeline</a></section>'+
   '<section class="panel dashboard-chart dashboard-chart-full"><div class="dashboard-section-head"><div><span class="eyebrow">VERTRIEBSÜBERSICHT</span>'+
-  '<h2>Wo stehen eure Leads?</h2><p>Wähle eine Kategorie. Die Details erscheinen direkt darunter – ohne Seitenwechsel.</p></div></div>'+
+  '<h2>Jeder Lead. Ein klarer Status.</h2><p>Status auswählen und die passenden Vorgänge darunter öffnen.</p></div><span class="dashboard-total"><strong>'+total+'</strong> Vorgänge gesamt</span></div>'+
   '<div class="donut-layout"><div class="donut-visual"><svg viewBox="0 0 200 200" role="group" aria-label="Leadstatus als interaktives Kreisdiagramm">'+
-  '<circle class="donut-track" cx="100" cy="100" r="74" fill="none" stroke="#edf1f3" stroke-width="19"/>'+slices+'</svg>'+
-  '<div class="donut-center"><strong>'+total+'</strong><span>Vorgänge</span></div></div><div class="donut-legend">'+legend+'</div></div>'+
-  '<section id="dashboardSelection" class="dashboard-selection" aria-live="polite">'+dashboardDetails(dashboardCategory)+'</section></section>'+
-  '<section class="dashboard-todo-panel panel"><div class="dashboard-todo-header"><div><span class="eyebrow">DEIN WORKFLOW</span>'+
-  '<h2>To-do <span>'+dueNow.length+' fällig</span></h2></div><a href="#activities">Alle Aufgaben ansehen</a></div>'+
+  '<circle class="donut-track" cx="100" cy="100" r="74" fill="none" stroke="#edf1f3" stroke-width="24"/>'+slices+'</svg>'+
+  '<div class="donut-center" id="dashboardCenter" style="--status-color:'+selectedGroup.tone+'">'+dashboardCenter(selectedGroup,selectedGroup.count,total)+'</div></div><div class="donut-legend">'+legend+'</div></div>'+
+  '<p class="dashboard-chart-note">Ein Vorgang zählt einmal. Kontaktstopp hat Vorrang. Gewonnen bedeutet Auftrag zugesagt; den Projektabschluss siehst du unter Projekte.</p></section>'+
+  '<div class="dashboard-kpis"><button data-action="go-today"><small>Jetzt fällig</small><strong>'+dueNow.length+
+  '</strong><span>Aufgaben & Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Leads</small><strong>'+groups.find(g=>g.key==='new').count+
+  '</strong><span>Noch vor dem Erstkontakt</span></button><button data-action="go-planned"><small>Später geplant</small><strong>'+planned.length+
+  '</strong><span>Aufgaben & Termine ab morgen</span></button><button class="kpi-won" data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>'+
+  groups.find(g=>g.key==='won').count+'</strong><span>Bestandskundenaufträge</span></button></div>'+
+  '<div class="dashboard-lower"><section id="dashboardSelection" class="panel dashboard-selection" aria-live="polite">'+dashboardDetails(dashboardCategory)+'</section>'+
+  '<section class="dashboard-todo-panel panel"><div class="dashboard-todo-header"><div><span class="eyebrow">DEIN NÄCHSTER SCHRITT</span>'+
+  '<h2>Heute anpacken <span>'+dueNow.length+' fällig</span></h2></div><a href="#activities">Alle Aufgaben</a></div>'+
   '<div class="dashboard-todo-list">'+(tasks||'<p class="dashboard-todo-empty">Keine Aufgaben für heute offen.</p>')+'</div>'+
-  (dueNow.length>4?'<p class="dashboard-todo-overflow">+'+(dueNow.length-4)+' weitere fällige Aufgaben in der Aufgabenübersicht</p>':'')+'</section>';
+  (dueNow.length>4?'<p class="dashboard-todo-overflow">+'+(dueNow.length-4)+' weitere fällige Aufgaben in der Aufgabenübersicht</p>':'')+'</section></div>';
 }
 
 function renderCompany(id){
@@ -651,9 +658,9 @@ async function act(action,id){switch(action){case'customer-win':return customerW
 $('#form').addEventListener('input',()=>dialogDirty=true);
 $('#form').onsubmit=async e=>{e.preventDefault();if(!dialogSave)return;$('#save').disabled=true;$('#formError').hidden=true;try{await dialogSave(Object.fromEntries(new FormData(e.target)));dialogDirty=false;$('#dialog').close();toast('Gespeichert.')}catch(err){$('#formError').textContent=err.message;$('#formError').hidden=false;if(err.status===409){const b=document.createElement('button');b.type='button';b.className='button small';b.textContent='Aktuellen Datenstand laden';b.onclick=async()=>{try{await reload();dialogRevision=data.revision;b.remove();$('#formError').textContent='Datenstand aktualisiert. Deine Eingabe wurde beibehalten. Prüfe sie anhand der aktualisierten Ansicht und speichere erneut.'}catch(e){toast(e.message)}};$('#formError').appendChild(b)}}finally{$('#save').disabled=false}};
 $('#closeDialog').onclick=closeDialog;$('#cancelDialog').onclick=closeDialog;$('#dialog').addEventListener('cancel',e=>{e.preventDefault();closeDialog()});$('#menu').onclick=()=>$('.sidebar').classList.toggle('open');$('#logout').onclick=async()=>{try{await request('/api/logout',{method:'POST',body:'{}'});location.replace('/login.html')}catch(e){toast(e.message)}};$('#refresh').onclick=()=>reload().catch(e=>toast(e.message));$('#loadUpdates').onclick=()=>reload().catch(e=>toast(e.message));
-$('#globalSearch').oninput=e=>{const q=e.target.value.trim().toLowerCase(),box=$('#searchResults');box.hidden=!q;if(!q)return;const companies=data.companies.filter(c=>[c.name,c.city,c.email].join(' ').toLowerCase().includes(q)),deals=data.deals.filter(d=>d.title.toLowerCase().includes(q)),contacts=data.contacts.filter(c=>[c.first_name,c.last_name,c.email].join(' ').toLowerCase().includes(q));box.innerHTML=companies.slice(0,6).map(c=>`<a href="#company/${c.id}">${esc(c.name)}<small>Unternehmen · ${esc(c.city)}</small></a>`).join('')+contacts.slice(0,4).map(c=>`<a href="#company/${c.company_id}">${esc(c.first_name+' '+c.last_name)}<small>Ansprechpartner · ${esc(company(c.company_id).name)}</small></a>`).join('')||'<p>Keine passenden Einträge.</p>'};
+$('#globalSearch').oninput=e=>{const q=e.target.value.trim().toLowerCase(),box=$('#searchResults');box.hidden=!q;if(!q)return;const companies=data.companies.filter(c=>[c.name,c.city,c.email].join(' ').toLowerCase().includes(q)),deals=data.deals.filter(d=>d.title.toLowerCase().includes(q)),contacts=data.contacts.filter(c=>[c.first_name,c.last_name,c.email].join(' ').toLowerCase().includes(q));box.innerHTML=companies.slice(0,6).map(c=>`<a href="#company/${c.id}">${esc(c.name)}<small>Unternehmen · ${esc(c.city)}</small></a>`).join('')+deals.slice(0,4).map(d=>`<a href="#company/${d.company_id}">${esc(d.title)}<small>Verkaufschance · ${esc(company(d.company_id).name)}</small></a>`).join('')+contacts.slice(0,4).map(c=>`<a href="#company/${c.company_id}">${esc(c.first_name+' '+c.last_name)}<small>Ansprechpartner · ${esc(company(c.company_id).name)}</small></a>`).join('')||'<p>Keine passenden Einträge.</p>'};
 document.addEventListener('click',e=>{if(!e.target.closest('.global-search'))$('#searchResults').hidden=true;if(!e.target.closest('.sidebar')&&!e.target.closest('#menu'))$('.sidebar').classList.remove('open')});$('#globalSearch').addEventListener('keydown',e=>{if(e.key==='Escape')$('#searchResults').hidden=true;if(e.key==='Enter')$('#searchResults a')?.click()});window.addEventListener('popstate',navigate);window.addEventListener('hashchange',()=>{if((location.hash.slice(1)||'overview')!==route)navigate()});window.addEventListener('beforeunload',e=>{if($('#dialog').open&&dialogDirty){e.preventDefault();e.returnValue=''}});
-document.addEventListener('click',e=>{const a=e.target.closest('a[href^="#"]');if(!a||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||a.target==='_blank')return;const next=a.getAttribute('href').slice(1);if(!/^(overview|activities|sales|contacts|projects|settings|deal\/\d+|company\/\d+)$/.test(next))return;e.preventDefault();navigateTo(next)});
+document.addEventListener('click',e=>{const a=e.target.closest('a[href^="#"]');if(!a||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||a.target==='_blank')return;const next=a.getAttribute('href').slice(1);if(!/^(overview|activities|appointments|sales|contacts|projects|clients|no_interest|stopped|settings|deal\/\d+|company\/\d+)$/.test(next))return;e.preventDefault();navigateTo(next)});
 window.addEventListener('scroll',()=>{if(restoringNavigation)return;clearTimeout(navigationScrollTimer);navigationScrollTimer=setTimeout(rememberScreen,150)},true);
 (async()=>{route=location.hash.slice(1)||'overview';filter=route==='contacts'?'companies':route==='activities'?'due':route==='clients'?'all':'open';const saved=history.state?.kaiserCRM&&history.state.screen?.route===route?history.state.screen:null;if(saved){scope=saved.scope??'all';query=saved.query??'';filter=saved.filter;view=saved.view??'board';page=saved.page||1}try{await reload();if(saved)showScreen(saved)}catch(e){$('#main').innerHTML=blank('CRM nicht erreichbar',e.message)}})();
 async function syncTeam(){if(!data||document.hidden||loading)return;loading=true;const prior=data.revision;try{const fresh=await request('/api/crm');if(data.revision!==prior)return;if(fresh.revision!==data.revision){if($('#dialog').open||document.activeElement?.matches('input,textarea,select')||document.querySelector('.dragging')){$('#updateBanner').hidden=false;$('#syncStatus').textContent='Neue Änderungen verfügbar'}else{applySnapshot(fresh)}}else{$('#syncStatus').textContent='Synchronisiert · '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}}catch(e){$('#syncStatus').textContent='Verbindung unterbrochen'}finally{loading=false}}

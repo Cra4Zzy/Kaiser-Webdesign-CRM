@@ -282,3 +282,59 @@ button,.button{font-weight:500}
  .donut-legend{grid-template-columns:1fr 1fr}
 }
 @media(prefers-reduced-motion:reduce){.dashboard-detail-reveal{animation:none}}
+
+/* Dashboard 10.2 — one semantic colour per sales status, with text labels. */
+.dashboard-greeting{padding:6px 0 23px;background:transparent;border:0;box-shadow:none;margin:0}
+.dashboard-greeting h1{font-size:clamp(30px,3vw,42px);font-weight:650;color:#152f35;margin:5px 0}
+.dashboard-greeting p{margin-top:6px;color:#536b73;font-size:13px}
+.dashboard-chart-full{padding:28px 32px 20px;border-radius:20px;background:#fff;box-shadow:0 8px 32px #163b4010;margin-bottom:18px}
+.dashboard-section-head{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.dashboard-section-head h2{font-size:clamp(20px,2vw,27px);font-weight:620;letter-spacing:-.035em}
+.dashboard-section-head p{color:#586f77;font-size:12px}
+.dashboard-total{display:flex;align-items:center;gap:9px;padding:11px 15px;background:#f0f5f4;border-radius:12px;color:#4e676f;font-size:11px;white-space:nowrap}
+.dashboard-total strong{font-size:23px;letter-spacing:-.04em;color:#173c37}
+.dashboard-chart-full .donut-layout{display:grid;grid-template-columns:minmax(260px,.9fr) minmax(360px,1.25fr);gap:30px;padding:8px 0 0;align-items:center}
+.dashboard-chart-full .donut-visual{width:100%;max-width:400px;margin:auto;position:relative}
+.donut-center{inset:25%;text-align:center;gap:5px}
+.donut-center strong{font-size:clamp(38px,4.4vw,66px);line-height:1.05;font-weight:650;letter-spacing:-.065em;color:var(--status-color,#163f35)}
+.donut-center .donut-center-label{font-size:12px;font-weight:600;color:#344e59;line-height:1.4}
+.donut-center .donut-center-share{font-size:11px;color:#62757d}
+.donut-arc{stroke-width:24;pointer-events:visibleStroke}
+.donut-arc.selected,.donut-arc:hover,.donut-arc:focus-visible{stroke-width:29;filter:drop-shadow(0 3px 3px #163b4020)}
+.donut-arc:focus-visible{stroke-width:32}
+.dashboard-chart-full .donut-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 11px;min-width:0}
+.donut-legend-item{grid-template-columns:10px minmax(0,1fr) auto;gap:10px;padding:15px 12px;min-height:59px;border:1px solid #e5eceb;border-radius:11px;background:#fff;color:#304852;font-size:12px;transition:background .15s,border-color .15s;min-width:0}
+.donut-legend-item i{width:10px;height:10px;border-radius:50%;background:var(--status-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--status-color) 10%,white)}
+.donut-legend-item strong{font-size:21px;font-weight:650;letter-spacing:-.04em;color:var(--status-color)}
+.donut-legend-item.selected,.donut-legend-item:hover{background:color-mix(in srgb,var(--status-color) 6%,white);border-color:color-mix(in srgb,var(--status-color) 65%,white);color:#243e47}
+.donut-legend-item:focus-visible{outline:2px solid var(--status-color);outline-offset:3px}
+.dashboard-chart-note{font-size:10.5px;color:#667a81;line-height:1.65;margin:1px 0 0;max-width:85ch}
+.dashboard-kpis{gap:12px;margin-bottom:20px}
+.dashboard-kpis button{min-height:112px;padding:18px 20px;gap:5px;border-radius:14px}
+.dashboard-kpis small{font-size:12px;color:#425e66}
+.dashboard-kpis strong{font-weight:650;font-size:32px}
+.dashboard-kpis span{color:#667c83;font-size:10.5px}
+.dashboard-kpis .kpi-won{background:#effbf3;border-color:#bde7cc}
+.dashboard-kpis .kpi-won strong{color:#058436}
+.dashboard-lower{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);align-items:start;gap:18px}
+.dashboard-lower .dashboard-selection{margin:0;padding:23px;border:1px solid #e5eceb;border-radius:16px}
+.dashboard-lower .dashboard-todo-panel{padding:23px;border-radius:16px;margin:0}
+.dashboard-lower .dashboard-todo-list{grid-template-columns:1fr}
+.dashboard-detail-heading h3{font-size:21px;font-weight:600}
+.dashboard-detail-name{font-size:13px}
+.dashboard-detail-rows{max-height:370px}
+.dashboard-detail-row{grid-template-columns:minmax(0,1fr) auto;gap:6px 12px}
+.dashboard-detail-extra{grid-column:1;grid-row:auto}
+.dashboard-detail-open{grid-column:2;grid-row:1/3}
+.dashboard-todo-header h2{font-weight:600;font-size:21px}
+.dashboard-todo-header{align-items:flex-start}
+.dashboard-todo-label a{font-size:12px}
+.badge.green,.status-pill.status-won{background:#daf6e4;color:#076e2f;border-color:#a6e2bc}
+.badge.red,.status-pill.status-stopped{background:#ffe4e4;color:#b51525;border-color:#ffc1c5}
+.status-pill.status-no_interest{background:#fff0dc;color:#a4440b;border-color:#f4cda2}
+.status-pill.status-lost{background:#e8edf3;color:#38485e;border-color:#ced6e1}
+.status-pill.status-followup{background:#fff2cf;color:#935600;border-color:#eed692}
+.status-pill.status-open{background:#e6edff;color:#1d4ed8;border-color:#c4d4ff}
+@media(min-width:1600px){.dashboard-chart-full .donut-visual{max-width:430px}.donut-legend-item{min-height:65px;font-size:13px}}
+@media(max-width:1150px){.dashboard-chart-full .donut-layout{grid-template-columns:minmax(240px,.8fr) minmax(260px,1fr);gap:20px}.dashboard-chart-full .donut-legend{grid-template-columns:1fr;gap:5px}.donut-legend-item{min-height:40px;padding:8px 12px}.donut-legend-item strong{font-size:18px}.dashboard-lower{grid-template-columns:1fr}.dashboard-lower .dashboard-todo-list{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.dashboard-greeting{padding:4px 0 20px}.dashboard-greeting .button{margin-top:12px}.dashboard-chart-full{padding:21px 17px;border-radius:16px}.dashboard-section-head{align-items:flex-start;gap:10px;flex-wrap:wrap}.dashboard-section-head p{line-height:1.55}.dashboard-total{padding:6px 10px;font-size:10px}.dashboard-total strong{font-size:18px}.dashboard-chart-full .donut-layout{display:flex;flex-direction:column;gap:0;padding-top:8px}.dashboard-chart-full .donut-visual{width:100%;max-width:330px}.donut-center strong{font-size:49px}.dashboard-chart-full .donut-legend{width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.donut-legend-item{padding:11px 8px;gap:7px;font-size:10.5px;min-height:50px;grid-template-columns:8px minmax(0,1fr) auto}.donut-legend-item i{width:8px;height:8px;box-shadow:none}.donut-legend-item strong{font-size:18px}.dashboard-chart-note{margin-top:17px;font-size:10px}.dashboard-kpis{gap:9px}.dashboard-kpis button{padding:15px 12px;min-height:112px}.dashboard-kpis strong{font-size:29px}.dashboard-lower .dashboard-todo-list{grid-template-columns:1fr}.dashboard-lower .dashboard-selection,.dashboard-lower .dashboard-todo-panel{padding:18px 15px}.dashboard-detail-heading h3{font-size:19px}.dashboard-detail-name{font-size:12px}}
