@@ -121,3 +121,21 @@ test('modern sb_secret API keys are never forwarded as bearer tokens',async()=>{
   assert.ok(!('Authorization' in requestHeaders[0]));
  } finally {globalThis.fetch=old}
 });
+
+test('missing bucket is detected even when object listing would return an empty array',async()=>{
+ const old=globalThis.fetch;const calls=[];
+ globalThis.fetch=async url=>{calls.push(url);return url.includes('/bucket/')?Response.json({statusCode:'404',error:'Bucket not found'},{status:400}):Response.json([])};
+ try{
+  const r=await handleProjectFiles({req:new Request('https://crm.example.com/api/project-files?project=1'),c:{url:'https://example.supabase.co',secret:'sb_secret_test'},session:{role:'admin'},projects:[{id:1}]});
+  assert.equal(r.status,200);assert.equal((await r.json()).setup_required,true);assert.equal(calls.length,1);
+ }finally{globalThis.fetch=old}
+});
+test('private storage lists files, but an unexpectedly public bucket fails closed',async()=>{
+ const old=globalThis.fetch;let isPublic=false;
+ globalThis.fetch=async url=>url.includes('/bucket/')?Response.json({id:'kaiser-projects',public:isPublic}):Response.json([{id:'file1',name:'test.txt',metadata:{size:15}}]);
+ try{
+  const request=()=>handleProjectFiles({req:new Request('https://crm.example.com/api/project-files?project=1'),c:{url:'https://example.supabase.co',secret:'sb_secret_test'},session:{role:'staff'},projects:[{id:1}]});
+  assert.equal((await (await request()).json()).files[0].path,'1/test.txt');
+  isPublic=true;assert.equal((await request()).status,503);
+ }finally{globalThis.fetch=old}
+});

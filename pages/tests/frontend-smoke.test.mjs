@@ -28,3 +28,28 @@ test('frontend executes settings and renders its HTML for both roles',()=>{
  assert.match(staffHTML,/Einstellungen/);
  assert.doesNotMatch(staffHTML,/JSON-Backup/);
 });
+
+function frontend(snapshot,expression){
+ const env=[{getItem:()=>null},{querySelector:()=>null,querySelectorAll:()=>[]},{scrollRestoration:'manual'},{},{hash:''}];
+ const execute=new Function('localStorage','document','history','window','location','snapshot',source.slice(0,source.indexOf("$('#form').addEventListener"))+'\ndata=snapshot; return ('+expression+');');
+ return execute(...env,snapshot);
+}
+const emptySnapshot=()=>({revision:'test',session:{role:'admin',name:'Test',member_id:1},crm_members:[{id:1,name:'Test',active:1}],companies:[],contacts:[],deals:[],projects:[],tasks:[],appointments:[],activities:[]});
+test('every main screen renders with an empty workspace',()=>{
+ for(const screen of screens){const html=frontend(emptySnapshot(),screen+'()');assert.ok(html.includes('<h1>'),screen);assert.doesNotMatch(html,/NaN|undefined/);}
+});
+test('dashboard groups partition all statuses, including blocked won deals and legacy phases',()=>{
+ const s=emptySnapshot();s.companies=[{id:1,name:'Test'}];
+ const scenarios=[['new','active',0,'new'],['attempted','active',0,'contacted'],['offer','active',0,'offer_email'],['won','active',0,'won'],['won','active',1,'stopped'],['interest','no_interest',0,'no_interest'],['new','lost',0,'lost'],['meeting','active',0,'followup']];
+ s.deals=scenarios.map(([stage,disposition,do_not_contact],i)=>({id:i+1,company_id:1,stage,disposition,do_not_contact}));
+ assert.deepEqual(frontend(s,'data.deals.map(dashboardGroupForDeal)'),scenarios.map(x=>x[3]));
+ const html=frontend(s,'renderOverview()');assert.doesNotMatch(html,/NaN|undefined/);
+ assert.ok(html.indexOf('dashboard-chart-full')<html.indexOf('dashboard-kpis'),'large chart must come first');
+ assert.match(html,/pointer|donut-arc/);
+});
+test('legacy dates on won, closed or blocked leads do not appear as actionable callbacks',()=>{
+ const s=emptySnapshot();s.companies=[{id:1,name:'Test'}];
+ s.deals=[{id:1,company_id:1,stage:'won',disposition:'active'},{id:2,company_id:1,stage:'new',disposition:'no_interest'},{id:3,company_id:1,stage:'new',disposition:'active',do_not_contact:1}].map(d=>({...d,next_follow_up:'2026-01-01'}));
+ assert.equal(frontend(s,'agenda().length'),0);
+ for(const key of ['won','no_interest','stopped'])assert.doesNotMatch(frontend(s,`dashboardDetails('${key}')`),/Nächster Schritt:/);
+});
