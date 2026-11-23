@@ -393,3 +393,33 @@ button,.button{font-weight:500}
 .pipeline-column:nth-child(6) .lead-card{border-left-color:var(--phase-followup)}
 @media(max-width:850px){.followup-row{grid-template-columns:1fr;gap:9px}.followup-date{width:max-content}.followup-controls{justify-content:flex-start}.company-research-grid{grid-template-columns:1fr}.company-fast-status{min-width:150px}}
 @media(max-width:550px){.followup-summary{gap:7px}.followup-summary>div{padding:12px 9px}.followup-summary span{font-size:10px}.followup-summary strong{font-size:25px}.followup-callout{padding:16px}.company-fast-status select{max-width:100%}}
+
+
+/* Consistent color language between donut, company card and sales rows */
+.company-focus-header{position:relative;overflow:hidden;padding-top:30px;border:1px solid #dce7e9;box-shadow:0 10px 36px #1835410a}
+.company-focus-header:before{content:"";height:6px;position:absolute;top:0;left:0;right:0;background:#64748b}
+.company-focus-open:before{background:#2563eb}
+.company-focus-followup:before{background:#d97706}
+.company-focus-won:before{background:#05943f}
+.company-focus-no_interest:before{background:#c75b12}
+.company-focus-stopped:before{background:#dc2626}
+.company-focus-lost:before{background:#475569}
+.company-insight-strip{gap:12px}
+.company-insight-strip>.company-fact{background:#fff;border:1px solid #e0e8eb;border-radius:12px;padding:19px 20px;box-shadow:0 3px 12px #18354108}
+.company-insight-strip>.company-fact:first-child{border-top:3px solid #05943f}
+.company-insight-strip>.company-fact:nth-child(2){border-top:3px solid #2563eb}
+.company-insight-strip>.company-fact:nth-child(3){border-top:3px solid #7c3aed}
+.company-insight-strip>.company-fact:nth-child(4){border-top:3px solid #d97706}
+.company-fact>small{font-weight:550;color:#5d7180}
+.company-fact>strong{font-size:21px!important;font-weight:620!important;letter-spacing:-.04em;color:#163746}
+.company-opportunity{border-left:5px solid var(--lead-accent,#64748b);background:#fff;padding:15px 17px;box-shadow:0 2px 12px #18354108}
+.company-opportunity-title{color:#143b4b;font-size:13px;font-weight:630}
+.company-opportunity>strong{font-weight:650;font-size:14px;color:#123b32}
+.company-journey{border-top:3px solid #2563eb}
+.company-projects{border-top:3px solid #7c3aed}
+.company-activity{border-top:3px solid #0891b2}
+.company-next-line{background:#fff5e6;border:1px solid #f7d9ae;border-left:4px solid #d97706}
+.company-next-line>span{color:#985e12}
+.company-next-line strong{color:#66410d}
+.company-section-heading h2{font-weight:600}
+@media(max-width:850px){.company-insight-strip>.company-fact{padding:14px 13px}.company-fact>strong{font-size:18px!important}}
