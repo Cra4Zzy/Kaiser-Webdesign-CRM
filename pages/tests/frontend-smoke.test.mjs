@@ -82,3 +82,40 @@ test('company screen includes direct pipeline movement and Excel research panel'
  assert.match(html,/Guten Tag/);
  assert.match(html,/Kontaktstopp setzen/);
 });
+
+
+test('new leads ask for a contact attempt before they can be marked reached',()=>{
+ const s=emptySnapshot();
+ s.companies=[{id:1,name:'Kunde A',do_not_contact:0}];
+ s.deals=[{id:1,company_id:1,title:'Website',stage:'new',disposition:'active',owner_id:1,value:897}];
+ const newHtml=frontend(s,'renderSales()');
+ assert.match(newHtml,/Kontaktversuch starten/);
+ assert.doesNotMatch(newHtml,/data-action="pipeline-reached"/);
+ s.deals[0].stage='contacted';
+ const contactedHtml=frontend(s,'renderSales()');
+ assert.match(contactedHtml,/data-action="pipeline-reached"/);
+ assert.match(contactedHtml,/Nicht erreicht/);
+ s.deals[0].stage='reached';
+ const reachedHtml=frontend(s,'renderSales()');
+ assert.match(reachedHtml,/data-action="pipeline-interest"/);
+ assert.match(reachedHtml,/Kein Interesse/);
+});
+test('accepted customers with unfinished projects have a separate processing lane',()=>{
+ const s=emptySnapshot();
+ s.companies=[{id:1,name:'Kunde A',do_not_contact:0}];
+ s.deals=[{id:1,company_id:1,title:'Website',stage:'won',disposition:'active',owner_id:1,value:897}];
+ s.projects=[{id:1,deal_id:1,company_id:1,name:'Website',status:'active',value:897,service_type:'website'}];
+ const html=frontend(s,'renderSales()');
+ assert.match(html,/In Bearbeitung/);
+ assert.match(html,/data-action="project-complete"/);
+ assert.match(html,/Kunde A/);
+ s.projects[0].status='done';
+ assert.doesNotMatch(frontend(s,'renderSales()'),/data-action="project-complete"/);
+});
+test('manual forms and customer sidebar actions are exposed',()=>{
+ assert.match(source,/function manualCompanyEditor/);
+ assert.match(source,/new_contact_name/);
+ assert.match(source,/contact_role/);
+ assert.match(source,/case'client-manual'/);
+ assert.match(frontend(emptySnapshot(),'renderClients()'),/Bestandskunde hinzufügen/);
+});
