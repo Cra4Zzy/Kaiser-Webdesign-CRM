@@ -338,3 +338,58 @@ button,.button{font-weight:500}
 @media(min-width:1600px){.dashboard-chart-full .donut-visual{max-width:430px}.donut-legend-item{min-height:65px;font-size:13px}}
 @media(max-width:1150px){.dashboard-chart-full .donut-layout{grid-template-columns:minmax(240px,.8fr) minmax(260px,1fr);gap:20px}.dashboard-chart-full .donut-legend{grid-template-columns:1fr;gap:5px}.donut-legend-item{min-height:40px;padding:8px 12px}.donut-legend-item strong{font-size:18px}.dashboard-lower{grid-template-columns:1fr}.dashboard-lower .dashboard-todo-list{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.dashboard-greeting{padding:4px 0 20px}.dashboard-greeting .button{margin-top:12px}.dashboard-chart-full{padding:21px 17px;border-radius:16px}.dashboard-section-head{align-items:flex-start;gap:10px;flex-wrap:wrap}.dashboard-section-head p{line-height:1.55}.dashboard-total{padding:6px 10px;font-size:10px}.dashboard-total strong{font-size:18px}.dashboard-chart-full .donut-layout{display:flex;flex-direction:column;gap:0;padding-top:8px}.dashboard-chart-full .donut-visual{width:100%;max-width:330px}.donut-center strong{font-size:49px}.dashboard-chart-full .donut-legend{width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.donut-legend-item{padding:11px 8px;gap:7px;font-size:10.5px;min-height:50px;grid-template-columns:8px minmax(0,1fr) auto}.donut-legend-item i{width:8px;height:8px;box-shadow:none}.donut-legend-item strong{font-size:18px}.dashboard-chart-note{margin-top:17px;font-size:10px}.dashboard-kpis{gap:9px}.dashboard-kpis button{padding:15px 12px;min-height:112px}.dashboard-kpis strong{font-size:29px}.dashboard-lower .dashboard-todo-list{grid-template-columns:1fr}.dashboard-lower .dashboard-selection,.dashboard-lower .dashboard-todo-panel{padding:18px 15px}.dashboard-detail-heading h3{font-size:19px}.dashboard-detail-name{font-size:12px}}
+
+
+/* KAISER CRM — fast workflow, high-contrast phase palette */
+:root{--phase-new:#2563eb;--phase-contact:#0891b2;--phase-interest:#0d9488;--phase-email:#7c3aed;--phase-demo:#c026d3;--phase-followup:#d97706;--phase-won:#05943f;--phase-decline:#c75b12;--phase-stop:#dc2626}
+.followup-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.followup-summary>div{background:#fff;border:1px solid #d5e0e5;border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:7px}
+.followup-summary>div:first-child{border-left:4px solid var(--phase-followup)}
+.followup-summary>div:nth-child(2){border-left:4px solid var(--phase-contact)}
+.followup-summary>div:nth-child(3){border-left:4px solid #455a64}
+.followup-summary span{font-size:12px;font-weight:500;color:#516170}
+.followup-summary strong{font-size:31px;font-weight:600;color:#172f3a;letter-spacing:-1px}
+.followup-list{overflow:hidden}
+.followup-row{display:grid;grid-template-columns:160px minmax(0,1fr) auto;align-items:center;gap:18px;padding:16px 20px;border-top:1px solid #e4ebee}
+.followup-date{border-radius:7px;background:#fff0dc;color:#894900;padding:10px 11px;font-size:12px;font-weight:650;text-align:center}
+.followup-date.late{background:#fee2e2;color:#991b1b}
+.followup-copy{min-width:0;display:flex;flex-direction:column;gap:5px}
+.followup-name{font-weight:620;color:#123443;font-size:14px;text-decoration:none}
+.followup-name:hover{text-decoration:underline}
+.followup-copy small{font-size:11px;color:#5c6b78}
+.followup-controls{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.followup-controls .action-positive{background:#def7e8;color:#05643e;border-color:#8bd6a9}
+.sales-quicklink{display:flex;align-items:center;gap:15px;margin:10px 0 16px;background:#fff5e8;border:1px solid #f7d6ae;border-left:4px solid var(--phase-followup);padding:13px 17px;border-radius:10px;flex-wrap:wrap}
+.sales-quicklink a{font-size:13px;font-weight:700;color:#8c4900}
+.sales-quicklink span{font-size:11px;color:#906139}
+.company-fast-status{min-width:190px;flex:1}
+.company-fast-status select{width:100%;max-width:270px;min-height:36px;border:1px solid #a1bec6;border-radius:8px;background:#e9f6f6;color:#0d4043;font-size:12px;font-weight:600;padding:7px 9px;cursor:pointer}
+.company-fast-status select:focus-visible{outline:2px solid #0284c7;outline-offset:2px}
+.company-opportunity-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.company-research{margin-bottom:14px;padding:0!important}
+.company-research summary{padding:18px 22px;cursor:pointer;color:#123443;font-size:15px;font-weight:600}
+.company-research summary .tab-count{margin-left:8px}
+.company-research-grid{padding:0 22px 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.company-research-grid>div{padding:15px;background:#f3f7f7;border:1px solid #dce5e7;border-radius:10px}
+.company-research-grid small{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#4b777d;font-weight:650;margin-bottom:7px}
+.company-research-grid p{font-size:12px;line-height:1.65;color:#233b47;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.followup-callout{display:flex;align-items:center;flex-wrap:wrap;gap:20px;padding:20px 24px;margin:0 0 20px;background:#fff6e8;border:1px solid #f5d0a8;border-left:5px solid var(--phase-followup);border-radius:14px}
+.followup-callout>div{flex:1;min-width:220px}
+.followup-callout h3{margin:4px 0 4px;font-size:19px;letter-spacing:-.025em;font-weight:620;color:#55351e}
+.followup-callout p{font-size:12px;color:#8d5f37;margin:0;line-height:1.5}
+.followup-callout>strong{font-size:24px;font-weight:650;color:#a85807}
+.followup-callout .primary{background:#b85c09;border-color:#b85c09;color:white}
+.status-pill.status-open{background:#dbeafe;color:#1d4ed8;border:1px solid #9fc4ff}
+.status-pill.status-followup{background:#ffedd5;color:#a04d00;border:1px solid #ffc880}
+.status-pill.status-won{background:#d1fae5;color:#04703e;border:1px solid #86d9ae}
+.status-pill.status-no_interest{background:#ffedd5;color:#ad4100;border:1px solid #ffc996}
+.status-pill.status-stopped{background:#fee2e2;color:#b91c1c;border:1px solid #ffadb2}
+.lead-card{border-left:4px solid var(--phase-new);box-shadow:0 2px 12px rgba(8,49,57,.06)}
+.pipeline-column:nth-child(1) .lead-card{border-left-color:var(--phase-new)}
+.pipeline-column:nth-child(2) .lead-card{border-left-color:var(--phase-contact)}
+.pipeline-column:nth-child(3) .lead-card{border-left-color:var(--phase-interest)}
+.pipeline-column:nth-child(4) .lead-card{border-left-color:var(--phase-email)}
+.pipeline-column:nth-child(5) .lead-card{border-left-color:var(--phase-demo)}
+.pipeline-column:nth-child(6) .lead-card{border-left-color:var(--phase-followup)}
+@media(max-width:850px){.followup-row{grid-template-columns:1fr;gap:9px}.followup-date{width:max-content}.followup-controls{justify-content:flex-start}.company-research-grid{grid-template-columns:1fr}.company-fast-status{min-width:150px}}
+@media(max-width:550px){.followup-summary{gap:7px}.followup-summary>div{padding:12px 9px}.followup-summary span{font-size:10px}.followup-summary strong{font-size:25px}.followup-callout{padding:16px}.company-fast-status select{max-width:100%}}
