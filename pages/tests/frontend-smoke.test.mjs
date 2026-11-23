@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const source=readFileSync(new URL('../../cloud/web/crm.js',import.meta.url),'utf8');
 const screens=['renderOverview','renderActivities','renderSales','renderContacts','renderProjects',
- 'renderClients','renderAppointments','renderSettings'];
+ 'renderClients','renderAppointments','renderFollowups','renderSettings'];
 
 test('all route handlers and desktop pipeline binder exist',()=>{
  for(const name of [...screens,'wirePipeline']){
@@ -52,4 +52,33 @@ test('legacy dates on won, closed or blocked leads do not appear as actionable c
  s.deals=[{id:1,company_id:1,stage:'won',disposition:'active'},{id:2,company_id:1,stage:'new',disposition:'no_interest'},{id:3,company_id:1,stage:'new',disposition:'active',do_not_contact:1}].map(d=>({...d,next_follow_up:'2026-01-01'}));
  assert.equal(frontend(s,'agenda().length'),0);
  for(const key of ['won','no_interest','stopped'])assert.doesNotMatch(frontend(s,`dashboardDetails('${key}')`),/Nächster Schritt:/);
+});
+
+test('follow-ups have their own visible queue and navigation',()=>{
+ const state=emptySnapshot();
+ state.companies=[{id:1,name:'Demo Zimmerei',do_not_contact:0}];
+ state.deals=[
+ {id:1,company_id:1,title:'Demo Zimmerei - Website',disposition:'active',stage:'followup',next_follow_up:'2026-11-25',next_action:'call',owner_id:1},
+ {id:2,company_id:1,title:'Won',disposition:'active',stage:'won',next_follow_up:'2026-11-24',owner_id:1},
+ {id:3,company_id:1,title:'Closed',disposition:'no_interest',stage:'followup',next_follow_up:'2026-11-24',owner_id:1}
+ ];
+ const html=frontend(state,'renderFollowups()');
+ assert.match(html,/Demo Zimmerei/);
+ assert.match(html,/Nachfassen/);
+ assert.match(html,/2026/);
+ assert.doesNotMatch(html,/Won|Closed/);
+ assert.match(source,/followups:renderFollowups/);
+ assert.match(source,/followups:'Nachfassen'/);
+ assert.match(source,/data-move-deal/);
+});
+test('company screen includes direct pipeline movement and Excel research panel',()=>{
+ const state=emptySnapshot();
+ state.companies=[{id:1,name:'Demo Zimmerei',do_not_contact:0,city:'Musterstadt'}];
+ state.deals=[{id:1,company_id:1,title:'Website',disposition:'active',stage:'interest',value:850,research_json:JSON.stringify({company_profile:'Handwerksbetrieb',opening_line:'Guten Tag'})}];
+ const html=frontend(state,'renderCompany(1)');
+ assert.match(html,/Status direkt ändern/);
+ assert.match(html,/Demo-Angebot versendet/);
+ assert.match(html,/Excel-Recherche/);
+ assert.match(html,/Guten Tag/);
+ assert.match(html,/Kontaktstopp setzen/);
 });
