@@ -119,3 +119,25 @@ test('manual forms and customer sidebar actions are exposed',()=>{
  assert.match(source,/case'client-manual'/);
  assert.match(frontend(emptySnapshot(),'renderClients()'),/Bestandskunde hinzufügen/);
 });
+
+
+test('desktop pipeline includes accessible synchronized top scroll track',()=>{
+ const s=emptySnapshot();
+ const html=frontend(s,'renderSales()');
+ assert.match(html,/class="pipeline-scroll-top"/);
+ assert.match(html,/class="pipeline-scroll-track"/);
+ assert.match(html,/class="pipeline-scroll-width"/);
+ assert.match(html,/class="pipeline-desktop"/);
+ assert.match(source,/function wirePipeline\(\)/);
+ assert.match(source,/board\.scrollLeft=top\.scrollLeft/);
+ assert.match(source,/top\.scrollLeft=board\.scrollLeft/);
+ assert.match(source,/ResizeObserver/);
+});
+test('all 12 dashboard status colors remain distinct and critical pairs have their own hues',()=>{
+ const str=source.match(/const STATUS_COLORS=\{([\s\S]*?)\};/);
+ assert.ok(str);
+ const map=Object.fromEntries([...str[1].matchAll(/(\w+):'(#[0-9a-fA-F]{6})'/g)].map(m=>[m[1],m[2]]));
+ assert.equal(Object.keys(map).length,12);
+ assert.equal(new Set(Object.values(map).map(c=>c.toLowerCase())).size,12);
+ for(const [a,b] of [['new','contacted'],['reached','interest'],['stopped','offer_demo'],['followup','no_interest']])assert.notEqual(map[a],map[b]);
+});
