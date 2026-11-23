@@ -175,6 +175,15 @@ export function command(snapshot,actor,p,now=new Date()){
   log('Bestandskunde in Vertrieb zurückgestuft',reason,d,null,'edit',{from:'won',to:next,archived_project_ids:related.map(p=>p.id)});
   break;
  }
+ case 'project_complete':{
+  if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Projektabschluss bestätigen.');
+  const project=get('projects',id);
+  if(project.status==='archived')fail('Archivierte Projekte zuerst wiederherstellen.');
+  if(project.status==='done')fail('Projekt bereits abgeschlossen.');
+  upd('projects',id,{status:'done'});
+  log('Projekt abgeschlossen',project.name,deal(project.deal_id),project.company_id,'edit',{project_id:id,previous_status:project.status,new_status:'done'});
+  break;
+ }
  case 'project_archive':{
   if(v.confirmed!=='yes'&&v.confirmed!==true)fail('Bitte Archivierung bestätigen.');
   const project=get('projects',id);
