@@ -108,7 +108,7 @@
    if(!Array.isArray(response.messages)||!Array.isArray(response.claims))throw new Error('Ungültiger Teamstatus');
    memberId=Number(response.member_id);claims=response.claims;mine=new Set(claims.filter(c=>c.mine).map(c=>Number(c.deal_id)));
    const firstLoad=!cache.size;for(const msg of response.messages)cache.set(Number(msg.id),msg);
-   if(firstLoad)hasOlder=Boolean(response.has_older);
+   if(firstLoad){hasOlder=Boolean(response.has_older);if(!opened)lastRead=Math.max(0,...response.messages.map(m=>Number(m.id)||0));}
    renderMessages();renderClaims();renderLockControls();setNavBadge();
    setStatus('Live verbunden · Aktualisierung alle 8 Sekunden');
   }catch(e){
