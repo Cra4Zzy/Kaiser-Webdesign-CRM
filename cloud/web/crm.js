@@ -157,7 +157,8 @@ const DASHBOARD_GROUPS=[
  {key:'offer_email',label:'E-Mail-Angebote',tone:'#7c3aed'},
  {key:'offer_demo',label:'Angebotsdemos',tone:'#c026d3'},
  {key:'followup',label:'Nachfassen',tone:'#d97706'},
- {key:'won',label:'Bestandskunden',tone:'#05943f'},
+ {key:'won',label:'Zusage / In Bearbeitung',tone:'#05943f'},
+ {key:'completed',label:'Abgeschlossen / Bestand',tone:'#047857'},
  {key:'no_interest',label:'Kein Interesse',tone:'#c75b12'},
  {key:'stopped',label:'Kontaktstopp',tone:'#dc2626'},
  {key:'lost',label:'Verloren / geschlossen',tone:'#475569'}
@@ -166,7 +167,7 @@ function dashboardGroupForDeal(d){
  if(blocked(d))return 'stopped';
  if(d.disposition==='no_interest')return 'no_interest';
  if(d.disposition!=='active')return 'lost';
- if(d.stage==='won')return 'won';
+ if(d.stage==='won')return data.projects.some(p=>p.deal_id===d.id&&p.status==='done')?'completed':'won';
  const key=phase(d);
  return ['new','contacted','interest','offer_email','offer_demo','followup'].includes(key)?key:'interest';
 }
@@ -249,7 +250,7 @@ function renderOverview(){
   '</strong><span>Aufgaben & Wiedervorlagen</span></button><button data-action="dashboard-category" data-id="new"><small>Neue Leads</small><strong>'+groups.find(g=>g.key==='new').count+
   '</strong><span>Noch vor dem Erstkontakt</span></button><button data-action="go-planned"><small>Später geplant</small><strong>'+planned.length+
   '</strong><span>Aufgaben & Termine ab morgen</span></button><button class="kpi-won" data-action="dashboard-category" data-id="won"><small>Gewonnene Aufträge</small><strong>'+
-  groups.find(g=>g.key==='won').count+'</strong><span>Bestandskundenaufträge</span></button></div>'+
+  groups.find(g=>g.key==='won').count+'</strong><span>Noch in Bearbeitung</span></button></div>'+
   '<div class="followup-callout"><div><span class="eyebrow">VERTRIEB / WIEDERVORLAGEN</span><h3>Nachfassen</h3><p>Nicht erreichte Kontakte sind hier mit dem automatischen Rückrufdatum sichtbar.</p></div><strong>'+data.deals.filter(d=>d.disposition==='active'&&d.stage!=='won'&&d.next_follow_up&&d.next_follow_up<=today()&&!blocked(d)).length+' fällig</strong><button class="button primary" data-action="go-followups">Alle Rückrufe öffnen</button></div>'+ 
   '<div class="dashboard-lower"><section id="dashboardSelection" class="panel dashboard-selection" aria-live="polite">'+dashboardDetails(dashboardCategory)+'</section>'+
   '<section class="dashboard-todo-panel panel"><div class="dashboard-todo-header"><div><span class="eyebrow">DEIN NÄCHSTER SCHRITT</span>'+
@@ -365,15 +366,15 @@ function renderClients(){
  const won=data.deals.filter(d=>d.stage==='won'&&d.disposition==='active');
  const all=data.projects.filter(p=>matches(p.name,company(p.company_id).name));
  const active=all.filter(p=>p.status!=='archived'&&p.status!=='done'),done=all.filter(p=>p.status==='done'),archived=all.filter(p=>p.status==='archived');
- const visible=filter==='done'?done:filter==='active'?active:filter==='archived'?archived:all.filter(p=>p.status!=='archived');
+ const visible=filter==='done'?done:filter==='active'?active:filter==='archived'?archived:done;
  const price=p=>Number(p.value)||0,sum=items=>items.reduce((n,p)=>n+price(p),0);
  const wonTotal=won.reduce((n,d)=>n+(Number(d.value)||0),0);
- return head('Bestandskunden','Gewonnene Aufträge, Projektwerte und abgeschlossene Arbeiten. Fehlzuordnungen kannst du direkt korrigieren.','','KUNDENBETREUUNG')+
+ return head('Bestandskunden','Hier findest du abgeschlossene Projekte mit ihren Auftragswerten und Unterlagen. Laufende Aufträge findest du unter Projekte.','','KUNDENBETREUUNG')+
  '<section class="client-revenue-grid" aria-label="Auftragswerte">'+
  '<div class="client-revenue-card"><span>Gewonnene Aufträge</span><strong>'+money(wonTotal)+'</strong><small>'+won.length+' angenommene Verkaufschancen</small></div>'+
  '<div class="client-revenue-card"><span>Abgeschlossene Projekte</span><strong>'+money(sum(done))+'</strong><small>'+done.length+' abgeschlossene Projekte</small></div>'+
  '<div class="client-revenue-card"><span>Laufende Projekte</span><strong>'+money(sum(active))+'</strong><small>'+active.length+' in Bearbeitung oder pausiert</small></div></section>'+
- tabs([['all','Alle Kunden',active.length+done.length],['active','Laufende Projekte',active.length],['done','Abgeschlossene Projekte',done.length],['archived','Archiv',archived.length]])+
+ tabs([['all','Abgeschlossene Kunden',done.length],['done','Abgeschlossene Projekte',done.length],['active','Noch in Bearbeitung',active.length],['archived','Archiv',archived.length]])+
  toolbar('Kunde oder Projekt suchen …')+
  paginate(visible,p=>'<tr><td><a class="main-link" href="#company/'+p.company_id+'">'+esc(company(p.company_id).name)+'</a><small>'+esc(p.name)+'</small></td>'+
  '<td>'+esc(SERVICE_TYPES[p.service_type]||'Projekt')+'</td>'+
