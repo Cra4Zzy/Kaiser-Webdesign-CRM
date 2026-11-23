@@ -295,7 +295,7 @@ function renderCompany(id){
   ' · '+esc(PROJECTS[p.status]||p.status)+'</small></div><span class="company-project-money">'+money(p.value)+'</span><div class="company-project-cta">'+
    button('Bearbeiten','project',p.id,'small')+(p.status!=='done'?button('Abschließen','project-complete',p.id,'small'):'')+button('Dateien','project-files',p.id,'small')+
    button('Archivieren','project-archive',p.id,'small')+'</div></article>').join('');
- const opportunities=deals.map(d=>'<div class="company-opportunity">'+
+ const opportunities=deals.map(d=>'<div class="company-opportunity" style="--lead-accent:'+(DASHBOARD_GROUPS.find(g=>g.key===dashboardGroupForDeal(d))?.tone||'#64748b')+'">'+
   '<div><a href="#deal/'+d.id+'" class="company-opportunity-title">'+esc(d.title)+'</a>'+
   '<small>'+esc(d.stage==='won'?'Auftrag gewonnen':PHASES[phase(d)]||d.stage)+'</small></div>'+
   '<span>'+stageBadge(d)+'</span><strong>'+money(d.value)+'</strong>'+
@@ -306,7 +306,7 @@ function renderCompany(id){
   esc(initials(p.first_name+' '+p.last_name))+'</span><div class="company-person-text"><strong>'+esc((p.first_name+' '+p.last_name).trim())+
   '</strong><small>'+esc(p.role||'Ansprechpartner')+'</small></div>'+
   '<div class="company-person-actions">'+definition(contactLinks(p))+button('Bearbeiten','contact-edit',p.id,'small')+'</div></article>').join('');
- return '<section class="company-focus-header"><div class="company-focus-top"><span class="company-identity">'+
+ return '<section class="company-focus-header company-focus-'+companyStatus(c)+'"><div class="company-focus-top"><span class="company-identity">'+
    '<span class="company-identity-mark">'+esc(initials(c.name))+'</span><span><small>UNTERNEHMENSAKTE</small><h1>'+esc(c.name)+
    '</h1><span class="company-subline">'+esc([c.industry,c.city].filter(Boolean).join(' · '))+'</span></span></span>'+
    '<span class="company-status-tag">'+companyStatusBadge(c)+'</span></div>'+actions+'</section>'+
