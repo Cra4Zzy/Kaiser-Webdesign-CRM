@@ -443,3 +443,78 @@ button,.button{font-weight:500}
 .company-fast-status select{border-color:#81bec5}
 .company-fast-status select:focus-visible{outline:2px solid #0ea5a4}
 @media(max-width:1100px){.pipeline-board{min-width:1750px}}
+
+
+/* Kaiser Team Hub — lightweight collaboration sidecar, independent of CRM screens */
+.team-hub-open{display:inline-flex;gap:8px;align-items:center;background:#e6f6f0;border:1px solid #86b9a6;color:#115c48;font-size:12px;white-space:nowrap}
+.team-hub-open:hover,.team-hub-open.is-open{background:#cceee1;color:#074b38}
+.team-hub-unread{min-width:19px;height:19px;padding:1px 5px;border-radius:15px;display:inline-flex;justify-content:center;align-items:center;color:#fff;background:#db244c;font-size:10px;font-weight:700}
+.team-hub-drawer[hidden]{display:none!important}
+.team-hub-drawer{position:fixed;inset:0;z-index:200;display:flex;justify-content:flex-end;pointer-events:none}
+.hub-backdrop{position:absolute;inset:0;z-index:0;border:0;background:rgba(11,29,38,.36);pointer-events:auto;cursor:default}
+.hub-panel{position:relative;z-index:1;width:min(475px,100vw);height:100%;display:flex;flex-direction:column;background:#f8fafb;border-left:1px solid #cbdadf;box-shadow:-18px 0 48px rgba(13,36,45,.18);pointer-events:auto}
+.hub-head{display:flex;align-items:center;gap:13px;padding:22px 21px 18px;background:#fff;border-bottom:1px solid #e2ebec;flex:none}
+.hub-head-icon{width:44px;height:44px;border-radius:12px;background:#184b49;color:#f4fff8;display:grid;place-items:center;font-size:13px;font-weight:650;letter-spacing:-.035em;flex:none}
+.hub-heading{flex:1;min-width:0}
+.hub-heading small{display:block;color:#68848a;font-size:9px;letter-spacing:.13em;font-weight:650}
+.hub-heading h2{font-size:21px;font-weight:620;letter-spacing:-.04em;margin:4px 0 2px;color:#122d3a}
+.hub-heading p{font-size:10px;color:#47846d;margin:0;font-weight:500}
+.hub-heading p[data-error=true]{color:#bb3030}
+.hub-close{font-size:23px;border-radius:9px;background:#f1f5f5;flex:none}
+.hub-active{padding:15px 19px 11px;flex:none;background:#eef6f4;border-bottom:1px solid #d8e6e2}
+.hub-section-label{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}
+.hub-section-label strong{font-size:12px;color:#234c47;font-weight:650}
+.hub-section-label span{font-size:10px;color:#638780}
+#teamHubClaims{padding:0;margin:0;list-style:none;max-height:118px;overflow:auto;display:grid;gap:4px}
+#teamHubClaims li{display:flex;gap:5px;align-items:center;justify-content:space-between;background:#fff;border:1px solid #dbe8e4;border-radius:8px;padding:8px 10px;min-height:37px}
+#teamHubClaims a{font-size:11.5px;font-weight:600;color:#145847;text-decoration:none}
+#teamHubClaims a:hover{text-decoration:underline}
+#teamHubClaims small{font-size:10px;color:#647e7b}
+#teamHubClaims .hub-empty{font-size:11px;font-weight:400;color:#69817a;background:transparent;border:0;padding:6px 0}
+.hub-chat-heading{padding:13px 20px;background:#fff;flex:none;border-bottom:1px solid #e3e9e9}
+.hub-chat-heading strong{display:block;color:#213b45;font-size:13px;font-weight:650}
+.hub-chat-heading small{display:block;margin-top:3px;color:#768b92;font-size:10px}
+.hub-message-scroll{min-height:100px;flex:1;overflow-y:auto;padding:14px 18px;background:linear-gradient(165deg,#f5f9f8,#eef3f5);scrollbar-color:#c6d6d6 transparent}
+#teamHubOlder{display:block;margin:0 auto 12px}
+.hub-messages{display:flex;flex-direction:column;gap:10px}
+.hub-message{align-self:flex-start;max-width:89%;min-width:90px;padding:10px 13px 11px;border:1px solid #d7e0e5;background:#fff;box-shadow:0 3px 12px rgba(16,44,56,.035);border-radius:11px 11px 11px 3px}
+.hub-message.mine{align-self:flex-end;background:#d9f4e8;border-color:#bce3d3;border-radius:11px 11px 3px 11px}
+.hub-message.system{align-self:center;background:#edf3f5;border:1px solid #d6e3e6;border-radius:9px;max-width:96%;box-shadow:none}
+.hub-message header{font-size:9.5px;font-weight:650;color:#526e77;margin-bottom:6px}
+.hub-message p{font-size:12px;line-height:1.55;color:#1e3540;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.hub-message a{display:inline-block;margin-top:6px;font-size:10px;color:#116f61;font-weight:650}
+.hub-compose{flex:none;padding:14px 18px 18px;background:#fff;border-top:1px solid #dee7e7}
+.hub-compose label{font-size:11px;font-weight:650;color:#36535b;display:block;margin-bottom:7px}
+.hub-compose textarea{display:block;width:100%;box-sizing:border-box;resize:vertical;max-height:140px;min-height:65px;background:#f8fbfa;border:1px solid #bccdd1;border-radius:9px;font-family:inherit;font-size:12px;padding:12px;color:#20333c;outline-offset:2px}
+.hub-compose textarea:focus{outline:2px solid #60b8a2}
+.hub-compose-bottom{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
+.hub-compose-bottom small{color:#6e848b;font-size:10px}
+.hub-compose-bottom button{min-width:90px}
+.team-nav-btn{display:flex;align-items:center;width:100%;text-align:left;cursor:pointer;border:0;background:transparent;font:inherit}
+.team-nav-btn svg{width:17px;height:17px;margin-right:12px}
+.team-claim-line{display:flex;gap:9px;align-items:center;justify-content:space-between;padding:6px 8px;background:#eff7f5;border:1px solid #d6e9e1;border-radius:8px;margin:6px 0;font-size:10.5px;color:#306757}
+.team-claim-line.claimed{background:#fff0dc;border-color:#f4c67d;color:#824d0a}
+.team-claim-line span{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.team-claim-line button{flex:none;padding:5px 8px;min-height:28px;font-size:10px}
+.team-claim-line button:disabled{opacity:.8;cursor:not-allowed}
+.team-deal-header-claim{margin:10px 0 15px}
+.team-deal-header-claim .team-claim-line{max-width:450px}
+.team-locked-by-other{box-shadow:0 0 0 2px rgba(223,117,10,.15)}
+@media(max-width:800px){.team-hub-open{font-size:11px;padding:7px 8px}.hub-panel{width:min(100%,475px)}}
+@media(max-width:570px){.hub-panel{width:100%}.hub-backdrop{display:none}.hub-head{padding:15px}.hub-active{padding:12px 14px}.hub-message-scroll{padding:10px}.hub-compose{padding:12px}.team-hub-open{max-width:96px;font-size:10px;gap:4px}}
+/* One categorical color token per business state; shapes and text remain visible without color perception. */
+:root{
+--phase-new:#2460ed;--phase-contact:#008fc7;--phase-reached:#008f85;--phase-interest:#159b3b;
+--phase-email:#7538db;--phase-demo:#ce269d;--phase-followup:#d99600;--phase-processing:#438d22;
+--phase-completed:#006d4f;--phase-decline:#d95d06;--phase-stop:#df194a;--phase-lost:#536378
+}
+.pipeline-column:nth-child(1) .lead-card{border-left-color:var(--phase-new)}
+.pipeline-column:nth-child(2) .lead-card{border-left-color:var(--phase-contact)}
+.pipeline-column:nth-child(3) .lead-card{border-left-color:var(--phase-reached)}
+.pipeline-column:nth-child(4) .lead-card{border-left-color:var(--phase-interest)}
+.pipeline-column:nth-child(5) .lead-card{border-left-color:var(--phase-email)}
+.pipeline-column:nth-child(6) .lead-card{border-left-color:var(--phase-demo)}
+.pipeline-column:nth-child(7) .lead-card{border-left-color:var(--phase-processing)}
+.donut-legend-item{border-left:3px solid var(--status-color);border-radius:10px}
+.donut-legend-item i{width:12px;height:12px;border:2px solid #ffffff;box-shadow:0 0 0 1px var(--status-color)}
+.donut-legend-item.selected{border-color:var(--status-color);background:color-mix(in srgb,var(--status-color) 7%,white)}
