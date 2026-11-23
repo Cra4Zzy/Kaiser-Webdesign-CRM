@@ -3,7 +3,7 @@
  const root=document.getElementById('teamHubDrawer'),openTop=document.getElementById('teamHubOpen'),close=document.getElementById('teamHubClose');
  if(!root||!openTop||!close)return;
  const messages=root.querySelector('#teamHubMessages'),scroller=root.querySelector('#teamHubScroll'),form=root.querySelector('#teamHubForm'),input=root.querySelector('#teamHubInput'),
-  status=root.querySelector('#teamHubStatus'),claimList=root.querySelector('#teamHubClaims'),older=root.querySelector('#teamHubOlder'),count=root.querySelector('#teamHubUnread');
+  status=root.querySelector('#teamHubStatus'),claimList=root.querySelector('#teamHubClaims'),older=root.querySelector('#teamHubOlder'),count=openTop.querySelector('#teamHubUnread');
  let opened=false,working=false,busy=false,clock=null,renewTimer=null,mine=new Set(),cache=new Map(),claims=[],lastRead=0,memberId=null,hasOlder=false,stopped=false;
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=v=>{const d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})};
@@ -106,7 +106,7 @@
   try{
    const response=await call('/api/team/hub');
    if(!Array.isArray(response.messages)||!Array.isArray(response.claims))throw new Error('Ungültiger Teamstatus');
-   memberId=Number(response.member_id);claims=response.claims;
+   memberId=Number(response.member_id);claims=response.claims;mine=new Set(claims.filter(c=>c.mine).map(c=>Number(c.deal_id)));
    const firstLoad=!cache.size;for(const msg of response.messages)cache.set(Number(msg.id),msg);
    if(firstLoad)hasOlder=Boolean(response.has_older);
    renderMessages();renderClaims();renderLockControls();setNavBadge();
