@@ -67,7 +67,14 @@ export function command(snapshot,actor,p,now=new Date()){
   id=d.id;
   break;
  }
- case 'deal':{let cid=id?get('deals',id).company_id:get('companies',v.company_id).id,contact=v.contact_id?get('contacts',v.contact_id):null;if(contact&&contact.company_id!==cid)fail('Ansprechpartner gehört nicht zur Firma.');let val={title:req(v.title,'Bezeichnung'),company_id:cid,contact_id:contact?.id??null,value:cash(v.value),need_summary:txt(v.need_summary),owner_id:owner(v.owner_id)};id=id?upd('deals',id,val).id:add('deals',{...val,stage:'new',disposition:'active'}).id;for(const project of s.projects.filter(p=>p.deal_id===id))upd('projects',project.id,{value:val.value});log('Verkaufschance gespeichert','',deal(id));break}
+ case 'deal':{let cid=id?get('deals',id).company_id:get('companies',v.company_id).id,contact=v.contact_id?get('contacts',v.contact_id):null;if(contact&&contact.company_id!==cid)fail('Ansprechpartner gehört nicht zur Firma.');
+ const named=txt(v.new_contact_name);
+ if(named){
+  if(contact)fail('Entweder vorhandenen oder neuen Ansprechpartner wählen.');
+  const parts=named.split(/\s+/);
+  contact=add('contacts',{company_id:cid,first_name:parts.shift(),last_name:parts.join(' '),role:txt(v.new_contact_role),phone:txt(v.new_contact_phone),email:txt(v.new_contact_email),notes:''});
+ }
+ let val={title:req(v.title,'Bezeichnung'),company_id:cid,contact_id:contact?.id??null,value:cash(v.value),need_summary:txt(v.need_summary),owner_id:owner(v.owner_id)};id=id?upd('deals',id,val).id:add('deals',{...val,stage:'new',disposition:'active'}).id;for(const project of s.projects.filter(p=>p.deal_id===id))upd('projects',project.id,{value:val.value});log('Verkaufschance gespeichert','',deal(id));break}
  case 'pipeline':{
   const d=deal(id),status=choice(v.status,['new','contacted','not_reached','reached','interest','offer_email','offer_demo','followup','building','no_interest'],'Pipeline-Schritt');
   if(status==='no_interest'){quick(d,'no_interest',txt(v.reason));break}
