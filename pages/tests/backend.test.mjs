@@ -23,8 +23,10 @@ test('missed call schedules automatic followup in three days, without duplicate 
  assert.equal(snap.deals[0].next_action,'call');
  assert.equal(snap.tasks.length,0);
  run(snap,staff,'pipeline',1,{status:'reached'});
- assert.equal(snap.deals[0].stage,'interest');
+ assert.equal(snap.deals[0].stage,'reached');
  assert.equal(snap.deals[0].next_follow_up,'');
+ run(snap,staff,'pipeline',1,{status:'interest'});
+ assert.equal(snap.deals[0].stage,'interest');
 });
 test('offer variants, priority and confirmed work produce exactly one categorized project',()=>{
  const snap=base();run(snap,actor,'deal',null,{company_id:1,title:'Social Media',value:1200});

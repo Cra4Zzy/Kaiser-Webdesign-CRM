@@ -7,7 +7,7 @@ const day=x=>{let s=txt(x);if(s&&(!/^\d{4}-\d{2}-\d{2}$/.test(s)||!Number.isFini
 const clock=(x,d)=>{let s=txt(x);if(s&&(!d||!/^([01]\d|2[0-3]):[0-5]\d$/.test(s)))fail('Ungültige Uhrzeit.');return s};
 const cash=x=>{let n=Number(txt(x).replace(',','.'));if(!Number.isFinite(n)||n<0)fail('Ungültiger Betrag.');return n};
 const actionNames={call:'Anrufen',followup:'Nachfassen',build_page:'Angebotsseite bauen',send_page:'Angebotsseite senden',email:'E-Mail schreiben',whatsapp:'WhatsApp schreiben',offer:'Angebot senden',meeting:'Termin vereinbaren',other:'Sonstiges'};
-const phases=['new','contacted','interest','offer','offer_email','offer_demo','building','followup'], kinds=['task','call','email','meeting','work'], contactKinds=['call','email','meeting','whatsapp'];
+const phases=['new','contacted','reached','interest','offer','offer_email','offer_demo','building','followup'], kinds=['task','call','email','meeting','work'], contactKinds=['call','email','meeting','whatsapp'];
 const cleared={next_follow_up:'',next_follow_up_time:'',next_action:''};
 export function command(snapshot,actor,p,now=new Date()){
  const s=structuredClone(snapshot), patches=[];const stamp=now.toISOString();const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
@@ -21,7 +21,7 @@ export function command(snapshot,actor,p,now=new Date()){
  const deal=x=>x?get('deals',x):null;const fields=(v,keys)=>Object.fromEntries(keys.split(' ').map(k=>[k,txt(v[k])]));
  const refs=v=>{const d=deal(v.deal_id);if(d&&v.company_id&&Number(v.company_id)!==d.company_id)fail('Vorgang gehört nicht zur Firma.');let cid=d?.company_id??(v.company_id?get('companies',v.company_id).id:null);return {deal_id:d?.id??null,company_id:cid}};
  const newDeal=cid=>add('deals',{company_id:cid,title:'Kundenkontakt',stage:'new',disposition:'active',owner_id:actor.member_id,value:0});
- const quick=(d,status,reason='',date='',time='')=>{if(d.stage==='won'&&d.disposition==='active')fail('Ein gewonnener Auftrag kann hier nicht geändert werden.');let val,sub;if(status==='no_interest'){val={disposition:status,lost_reason:reason||'Kein Interesse',disposition_at:stamp,...cleared};sub='Kein Interesse'}else{if(stopped(d.company_id))fail('Kontaktstopp zuerst aufheben.');val={disposition:'active',lost_reason:'',disposition_at:'',stage:status==='followup'?'followup':'new',...(date?{next_follow_up:date,next_follow_up_time:time,next_action:'followup'}:status==='open'?cleared:{})};sub=status==='followup'?'Nachfassen':'Wieder offen'}let before={stage:d.stage,disposition:d.disposition};upd('deals',d.id,val);log(sub,reason,d,null,'edit',{before,after:val})};
+ const quick=(d,status,reason='',date='',time='')=>{if(d.stage==='won'&&d.disposition==='active')fail('Ein gewonnener Auftrag kann hier nicht geändert werden.');let val,sub;if(status==='no_interest'){val={disposition:status,lost_reason:reason||'Kein Interesse',disposition_at:stamp,...cleared};sub='Kein Interesse'}else{if(stopped(d.company_id))fail('Kontaktstopp zuerst aufheben.');val={disposition:'active',lost_reason:'',disposition_at:'',stage:status==='followup'?'followup':status==='reached'?'reached':status==='interest'?'interest':'new',...(date?{next_follow_up:date,next_follow_up_time:time,next_action:'followup'}:status==='open'?cleared:{})};sub=status==='followup'?'Nachfassen':status==='reached'?'Erreicht · Interesse offen':status==='interest'?'Interesse bestätigt':'Wieder offen'}let before={stage:d.stage,disposition:d.disposition};upd('deals',d.id,val);log(sub,reason,d,null,'edit',{before,after:val})};
  const restoreWonProject=d=>{const archived=s.projects.find(p=>p.deal_id===d.id&&p.status==='archived');if(archived){upd('projects',archived.id,{status:'active'});return}if(!s.projects.some(p=>p.deal_id===d.id))add('projects',{company_id:d.company_id,deal_id:d.id,name:d.title,value:d.value||0,status:'active',owner_id:d.owner_id??null,service_type:'website'});};
  const complete=d=>{if(!d.next_follow_up||d.stage==='won'||d.disposition!=='active')fail('Wiedervorlage bereits abgeschlossen.');if(stopped(d.company_id))fail('Kontaktstopp aktiv.');let a=d.next_action||'other',title=actionNames[a]||'Wiedervorlage';let t=add('tasks',{title,kind:['call','email','meeting'].includes(a)?a:'task',status:'done',due_date:d.next_follow_up,due_time:d.next_follow_up_time||'',company_id:d.company_id,deal_id:d.id,owner_id:d.owner_id??null,notes:'Abgeschlossene Vertriebswiedervorlage.'});upd('deals',d.id,cleared);log('Wiedervorlage erledigt',title,d,null,'edit',{task_id:t.id});return t.id};
  if(!p||typeof p!=='object'||!p.values||typeof p.values!=='object'||Array.isArray(p.values))fail('Ungültige Anfrage.');const v=p.values;let id=p.id?Number(p.id):null;
@@ -29,7 +29,52 @@ export function command(snapshot,actor,p,now=new Date()){
  case 'member':{if(actor.role!=='admin')fail('Nur Administration.');let name=req(v.name,'Name');if(id){let active=Number(Boolean(v.active??1));if(!active&&id===actor.member_id)fail('Eigenes Profil kann nicht deaktiviert werden.');upd('crm_members',id,{name,active})}else id=add('crm_members',{name,active:1}).id;log('Teamprofil aktualisiert',name);break}
  case 'company':{let val=fields(v,'name industry city phone email website notes');val.name=req(val.name,'Unternehmen');if(val.website){try{let u=new URL(/^[a-z]+:/i.test(val.website)?val.website:'https://'+val.website);if(!['http:','https:'].includes(u.protocol))fail('Ungültige Website.');val.website=u.href}catch{fail('Ungültige Website.')}}id=id?upd('companies',id,val).id:add('companies',val).id;log('Unternehmensdaten gespeichert','',null,id);break}
  case 'contact':{let cid=get('companies',v.company_id).id,val={...fields(v,'first_name last_name role phone email notes'),company_id:cid};if(!val.first_name&&!val.last_name)fail('Bitte einen Namen angeben.');if(id&&get('contacts',id).company_id!==cid)fail('Firmenzuordnung bleibt erhalten.');id=id?upd('contacts',id,val).id:add('contacts',val).id;log('Ansprechpartner gespeichert','',null,cid);break}
- case 'deal':{let cid=id?get('deals',id).company_id:get('companies',v.company_id).id,contact=v.contact_id?get('contacts',v.contact_id):null;if(contact&&contact.company_id!==cid)fail('Ansprechpartner gehört nicht zur Firma.');let val={title:req(v.title,'Bezeichnung'),company_id:cid,contact_id:contact?.id??null,value:cash(v.value),need_summary:txt(v.need_summary),owner_id:owner(v.owner_id)};id=id?upd('deals',id,val).id:add('deals',{...val,stage:'new',disposition:'active'}).id;for(const project of s.projects.filter(p=>p.deal_id===id))upd('projects',project.id,{value:val.value});log('Verkaufschance gespeichert','',deal(id));break}
+ case 'lead_create':case 'client_create':{
+  // Create the complete company + optional contact + deal (+ finished customer project)
+  // as a single atomic set of patches. No existing company is silently reused.
+  const isClient=p.op==='client_create';
+  const name=req(v.company_name,'Unternehmen');
+  const city=txt(v.city);
+  if(s.companies.some(c=>txt(c.name).toLocaleLowerCase('de')===name.toLocaleLowerCase('de')
+   &&txt(c.city).toLocaleLowerCase('de')===city.toLocaleLowerCase('de')))
+   fail('Die Firma ist bereits vorhanden. Öffne die Firmenakte und lege dort einen neuen Vorgang an.');
+  const website=txt(v.website);
+  if(website){try{let url=new URL(/^[a-z]+:/i.test(website)?website:'https://'+website);
+   if(!['https:','http:'].includes(url.protocol))fail('Ungültige Website.');}catch{fail('Ungültige Website.')}}
+  const ownerId=owner(v.owner_id||actor.member_id);
+  const c=add('companies',{name,city,industry:txt(v.industry),phone:txt(v.phone),
+   email:txt(v.email),website,notes:txt(v.company_notes),do_not_contact:0});
+  let contactId=null;
+  const person=txt(v.contact_name);
+  if(person){
+   const parts=person.split(/\s+/),first_name=parts.shift(),last_name=parts.join(' ');
+   contactId=add('contacts',{company_id:c.id,first_name,last_name,role:txt(v.contact_role),
+    phone:txt(v.contact_phone),email:txt(v.contact_email),notes:''}).id;
+  }
+  const title=req(v.title,'Bezeichnung des Auftrags');
+  const value=cash(v.value??0);
+  const d=add('deals',{company_id:c.id,contact_id:contactId,title,value,
+   need_summary:txt(v.need_summary),notes:txt(v.notes),priority:choice(v.priority||'medium',['high','medium','low'],'Priorität'),
+   owner_id:ownerId,stage:isClient?'won':'new',disposition:'active',do_not_contact:0,
+   next_follow_up:'',next_follow_up_time:'',next_action:''});
+  if(isClient){
+   const service_type=choice(v.service_type||'website',['website','app','social_media','mixed'],'Leistung');
+   const status=choice(v.project_status||'done',['done','active'],'Projektstatus');
+   add('projects',{company_id:c.id,deal_id:d.id,name:title,value,status,
+    owner_id:ownerId,service_type,notes:txt(v.project_notes),deadline:''});
+  }
+  log(isClient?'Bestandskunde manuell angelegt':'Lead manuell angelegt',name,d,c.id,'edit',{source:'manual'});
+  id=d.id;
+  break;
+ }
+ case 'deal':{let cid=id?get('deals',id).company_id:get('companies',v.company_id).id,contact=v.contact_id?get('contacts',v.contact_id):null;if(contact&&contact.company_id!==cid)fail('Ansprechpartner gehört nicht zur Firma.');
+ const named=txt(v.new_contact_name);
+ if(named){
+  if(contact)fail('Entweder vorhandenen oder neuen Ansprechpartner wählen.');
+  const parts=named.split(/\s+/);
+  contact=add('contacts',{company_id:cid,first_name:parts.shift(),last_name:parts.join(' '),role:txt(v.new_contact_role),phone:txt(v.new_contact_phone),email:txt(v.new_contact_email),notes:''});
+ }
+ let val={title:req(v.title,'Bezeichnung'),company_id:cid,contact_id:contact?.id??null,value:cash(v.value),need_summary:txt(v.need_summary),owner_id:owner(v.owner_id)};id=id?upd('deals',id,val).id:add('deals',{...val,stage:'new',disposition:'active'}).id;for(const project of s.projects.filter(p=>p.deal_id===id))upd('projects',project.id,{value:val.value});log('Verkaufschance gespeichert','',deal(id));break}
  case 'pipeline':{
   const d=deal(id),status=choice(v.status,['new','contacted','not_reached','reached','interest','offer_email','offer_demo','followup','building','no_interest'],'Pipeline-Schritt');
   if(status==='no_interest'){quick(d,'no_interest',txt(v.reason));break}
@@ -38,7 +83,7 @@ export function command(snapshot,actor,p,now=new Date()){
   const before={stage:d.stage,disposition:d.disposition},val={disposition:'active',lost_reason:'',disposition_at:'',...cleared};
   let label='';
   if(status==='not_reached'){Object.assign(val,{stage:'followup',last_contact:today,next_follow_up:inDays(3),next_action:'call'});label='Nicht erreicht · Rückruf in 3 Tagen'}
-  else if(status==='reached'){val.stage='interest';val.last_contact=today;label='Erreicht · Interesse prüfen'}
+  else if(status==='reached'){val.stage='reached';val.last_contact=today;label='Erreicht · Interesse noch offen'}
   else if(status==='offer_email'||status==='offer_demo'){val.stage=status;val.proposal_sent_at=stamp;label=status==='offer_email'?'Angebot per E-Mail versendet':'Website-/Social-Media-Demo gesendet'}
   else if(status==='followup'){val.stage='followup';val.next_follow_up=day(v.due_date)||inDays(3);val.next_follow_up_time=clock(v.due_time,val.next_follow_up);val.next_action='followup';label='Nachfassen eingeplant'}
   else if(status==='building'){val.stage='won';label='Zusage · Auftrag in Bearbeitung'}
@@ -65,7 +110,7 @@ export function command(snapshot,actor,p,now=new Date()){
  else if(!existing)add('projects',{company_id:d.company_id,deal_id:id,name:d.title,value:d.value??0,status:'active',owner_id:d.owner_id??null,service_type});
 }log(status==='won'?'Auftrag gewonnen':status==='lost'?'Verkaufschance verloren':'Verkaufsphase geändert',reason,d,null,'edit',{before,after:val});break}
  case 'stop':{get('companies',id);let stop=Number(Boolean(v.stop));upd('companies',id,{do_not_contact:stop});for(const d of s.deals.filter(d=>d.company_id===id))upd('deals',d.id,{do_not_contact:stop,...(stop?cleared:{})});log(stop?'Kontaktstopp gesetzt':'Kontaktstopp aufgehoben',txt(v.reason),null,id);break}
- case 'log':case 'conversation':{let conv=p.op==='conversation',d=deal(v.deal_id),cid=conv?get('companies',v.company_id).id:d?.company_id;if(!cid||d&&d.company_id!==cid)fail('Ungültige Firmenzuordnung.');let kind=choice(v.kind,['note',...contactKinds,...(conv?[]:['work'])],'Kontaktart'),body=txt(v.body),result=kind==='note'?'Notiz':req(v.result,'Ergebnis');if(kind==='note'&&!body)fail('Bitte eine Notiz eingeben.');if(contactKinds.includes(kind)&&stopped(cid))fail('Kontaktstopp aktiv.');let status=conv?choice(v.sales_status??'keep',['keep','no_interest','followup','open'],'Status'):'keep';if(conv&&!d&&status!=='keep'&&kind!=='note'&&!s.deals.some(x=>x.company_id===cid))d=newDeal(cid);
+ case 'log':case 'conversation':{let conv=p.op==='conversation',d=deal(v.deal_id),cid=conv?get('companies',v.company_id).id:d?.company_id;if(!cid||d&&d.company_id!==cid)fail('Ungültige Firmenzuordnung.');let kind=choice(v.kind,['note',...contactKinds,...(conv?[]:['work'])],'Kontaktart'),body=txt(v.body),result=kind==='note'?'Notiz':req(v.result,'Ergebnis');if(kind==='note'&&!body)fail('Bitte eine Notiz eingeben.');if(contactKinds.includes(kind)&&stopped(cid))fail('Kontaktstopp aktiv.');let status=conv?choice(v.sales_status??'keep',['keep','no_interest','followup','open','reached','interest'],'Status'):'keep';if(conv&&!d&&status!=='keep'&&kind!=='note'&&!s.deals.some(x=>x.company_id===cid))d=newDeal(cid);
  let task=null;if(conv&&choice(v.planning??'keep',['keep','plan'],'Planung')==='plan'){let date=day(v.due_date),k=choice(v.task_kind??'call',kinds,'Aufgabenart');if(!date)fail('Bitte Datum für nächsten Schritt angeben.');if(contactKinds.includes(k)&&stopped(cid))fail('Kontaktstopp aktiv.');task={title:req(v.title,'Nächster Schritt'),kind:k,due_date:date,due_time:clock(v.due_time,date),owner_id:owner(v.owner_id),company_id:cid,deal_id:d?.id??null}}
  if(conv&&v.complete){let m=/^(task|appointment|followup):(\d+)$/.exec(v.complete);if(!m)fail('Ungültige Aufgabe.');let t={task:'tasks',appointment:'appointments',followup:'deals'}[m[1]],old=get(t,m[2]);if(old.company_id!==cid)fail('Aufgabe gehört zu einer anderen Firma.');if(m[1]==='followup')complete(old);else{if(old.status!==(t==='tasks'?'open':'planned'))fail('Aufgabe bereits abgeschlossen.');upd(t,old.id,{status:'done'});log('Aufgabe abgeschlossen',old.title,deal(old.deal_id),cid)}}
  log(result,body,d,cid,kind);if(d&&contactKinds.includes(kind))upd('deals',d.id,{last_contact:today});if(status!=='keep'){if(!d||kind==='note')fail('Statusänderung benötigt einen Kontaktvorgang.');if(status==='followup'&&!task&&result!=='Nicht erreicht')fail('Bitte nächsten Schritt planen.');if(status==='no_interest'&&task)fail('Bei Kein Interesse keine neue Aufgabe planen.');quick(d,status,body,result==='Nicht erreicht'&&!task?inDays(3):'');if(status==='followup'&&task&&d.next_follow_up)upd('deals',d.id,cleared)}if(task){add('tasks',task);log('Nächster Schritt geplant',task.title,d,cid)}break}
@@ -82,7 +127,7 @@ export function command(snapshot,actor,p,now=new Date()){
     record.status!==(source==='task'?'open':'planned'))fail('Dieser Vorgang wurde bereits abgeschlossen.');
   const work=choice(v.work_kind,['call','email','meeting','offer','demo','work','other'],'Erledigte Tätigkeit');
   const result=req(v.result,'Ergebnis / Notiz');
-  const status=choice(v.pipeline_status,['keep','contacted','not_reached','interest','offer_email','offer_demo','followup','no_interest','won'],'Pipeline-Status');
+  const status=choice(v.pipeline_status,['keep','contacted','reached','not_reached','interest','offer_email','offer_demo','followup','no_interest','won'],'Pipeline-Status');
   const cid=record.company_id||null;
   let d=source==='followup'?record:(record.deal_id?get('deals',record.deal_id):null);
   if(d&&cid&&d.company_id!==cid)fail('Unpassende Firmenzuordnung.');
@@ -166,7 +211,7 @@ export function command(snapshot,actor,p,now=new Date()){
   const d=get('deals',id);
   if(d.stage!=='won'||d.disposition!=='active')fail('Dieser Auftrag ist kein aktiver Bestandskundenauftrag.');
   const reason=req(v.reason,'Grund für Rückstufung');
-  const next=choice(v.stage||'interest',['new','contacted','interest','offer_email','offer_demo','followup'],'Neue Phase');
+  const next=choice(v.stage||'interest',['new','contacted','reached','interest','offer_email','offer_demo','followup'],'Neue Phase');
   const val={stage:next,disposition:'active',...cleared};
   if(next==='followup'){const date=day(v.due_date);if(!date)fail('Datum der Wiedervorlage fehlt.');Object.assign(val,{next_follow_up:date,next_action:'call'});}
   upd('deals',id,val);

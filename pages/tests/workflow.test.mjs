@@ -156,3 +156,48 @@ test('accepted order stays in processing until project is explicitly completed',
  assert.equal(s.deals[0].value,897);
  assert.throws(()=>execute(s,admin,'project_complete',1,{confirmed:'yes'}),/bereits abgeschlossen/);
 });
+
+
+test('reached is distinct from interest after first contact',()=>{
+ const s=fixture();
+ execute(s,admin,'lead_create',null,{company_name:'Neue Zimmerei',title:'Neue Website',contact_name:'Max Mustermann',contact_role:'Inhaber',value:'897'});
+ assert.equal(s.companies.length,2);
+ assert.equal(s.contacts[0].role,'Inhaber');
+ assert.equal(s.deals[0].stage,'new');
+ execute(s,admin,'pipeline',1,{status:'contacted'});
+ execute(s,admin,'pipeline',1,{status:'reached'});
+ assert.equal(s.deals[0].stage,'reached');
+ assert.equal(s.projects.length,0);
+ execute(s,admin,'pipeline',1,{status:'interest'});
+ assert.equal(s.deals[0].stage,'interest');
+});
+test('manual customer is added independently with finished project and amount',()=>{
+ const s=fixture();
+ execute(s,staff,'client_create',null,{company_name:'Frühere Kundin',title:'Website 2025',contact_name:'Anna Beispiel',contact_role:'Inhaberin',value:'1499',service_type:'website',project_status:'done'});
+ assert.equal(s.deals[0].stage,'won');
+ assert.equal(s.deals[0].value,1499);
+ assert.equal(s.projects[0].status,'done');
+ assert.equal(s.projects[0].company_id,s.companies[1].id);
+ assert.equal(s.contacts[0].role,'Inhaberin');
+});
+test('duplicate manual lead is rejected without changing shared snapshot',()=>{
+ const s=fixture();
+ assert.throws(()=>execute(s,admin,'lead_create',null,{company_name:'Dachdeckerei',title:'Erneute Akquise',value:500}),/bereits vorhanden/);
+ assert.equal(s.deals.length,0);
+ assert.equal(s.companies.length,1);
+});
+test('conversation can record reached without inventing interest',()=>{
+ const s=fixture();
+ execute(s,admin,'deal',null,{company_id:1,title:'Website',value:897});
+ execute(s,admin,'conversation',null,{company_id:1,deal_id:1,kind:'call',result:'Erreicht',body:'Kurzes Vorgespräch',sales_status:'reached'});
+ assert.equal(s.deals[0].stage,'reached');
+ execute(s,admin,'conversation',null,{company_id:1,deal_id:1,kind:'call',result:'Interesse bestätigt',body:'Angebot erwünscht',sales_status:'interest'});
+ assert.equal(s.deals[0].stage,'interest');
+});
+test('manual contact can be added directly while creating new deal for existing company',()=>{
+ const s=fixture();
+ execute(s,admin,'deal',null,{company_id:1,title:'Social Media',value:389,new_contact_name:'Paul Beispiel',new_contact_role:'Marketing'});
+ assert.equal(s.contacts[0].first_name,'Paul');
+ assert.equal(s.contacts[0].role,'Marketing');
+ assert.equal(s.deals[0].contact_id,s.contacts[0].id);
+});
