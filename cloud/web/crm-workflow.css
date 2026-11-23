@@ -423,3 +423,23 @@ button,.button{font-weight:500}
 .company-next-line strong{color:#66410d}
 .company-section-heading h2{font-weight:600}
 @media(max-width:850px){.company-insight-strip>.company-fact{padding:14px 13px}.company-fact>strong{font-size:18px!important}}
+
+/* Seven-step sales workflow: reached is not yet interested; follow-ups live separately. */
+:root{--phase-reached:#0ea5a4;--phase-processing:#05943f}
+.pipeline-board{grid-template-columns:repeat(7,minmax(240px,1fr));min-width:1750px;gap:11px}
+.pipeline-column:nth-child(3){background:#e7f7f5}
+.pipeline-column:nth-child(4){background:#e5f4ee}
+.pipeline-column:nth-child(7){background:#e7f5eb}
+.pipeline-column:nth-child(3) .lead-card{border-left-color:var(--phase-reached)}
+.pipeline-column:nth-child(4) .lead-card{border-left-color:var(--phase-interest)}
+.pipeline-column:nth-child(5) .lead-card{border-left-color:var(--phase-email)}
+.pipeline-column:nth-child(6) .lead-card{border-left-color:var(--phase-demo)}
+.pipeline-column:nth-child(7) .lead-card{border-left-color:var(--phase-processing)}
+.processing-card{background:#fbfffc;border:1px solid #bcdac8;border-left:4px solid var(--phase-processing)}
+.processing-card .lead-phase{color:#047857}
+.processing-card .lead-card-meta{gap:7px}
+.lead-card-actions .action-positive{background:#d1fae5;border-color:#8cdeb5;color:#065f46;font-weight:660}
+.lead-card-actions .action-positive:hover{background:#a7efcf}
+.company-fast-status select{border-color:#81bec5}
+.company-fast-status select:focus-visible{outline:2px solid #0ea5a4}
+@media(max-width:1100px){.pipeline-board{min-width:1750px}}
