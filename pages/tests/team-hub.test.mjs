@@ -83,3 +83,18 @@ test('server checks conflicts before mutating CRM data',async()=>{
   assert.equal(applied,false,'Conflicting updates must be rejected');
  }finally{globalThis.fetch=old}
 });
+
+
+test('chat shows stored company name and lead title, including past activity',()=>{
+ const code=read('cloud/web/team-hub.js');
+ assert.match(code,/m\.company_name/);
+ assert.match(code,/m\.deal_title/);
+ assert.match(code,/hub-message-lead/);
+ assert.match(code,/textContent=m\.company_name\|\|m\.deal_title/);
+ assert.match(code,/c\.company_name/);
+ const patch=read('db/team-hub-lead-names.sql');
+ assert.match(patch,/left join kaiser_crm\.deals d on d\.id=m\.deal_id/);
+ assert.match(patch,/left join kaiser_crm\.companies c on c\.id=coalesce\(m\.company_id,d\.company_id\)/);
+ assert.match(patch,/company_name/);
+ assert.match(patch,/deal_title/);
+});
