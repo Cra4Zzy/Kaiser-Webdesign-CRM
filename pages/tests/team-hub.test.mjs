@@ -22,7 +22,7 @@ test('12 dashboard status swatches are individually colored and labels preserved
 test('team hub UI and lead claim slots exist in pipeline and company profiles',()=>{
  assert.match(html,/id="teamHubDrawer"/);
  assert.match(html,/id="teamHubOpen"/);
- assert.match(html,/team-hub\.js\?v=1/);
+ assert.match(html,/team-hub\.js\?v=\d+/);
  assert.match(js,/data-team-lock-slot/);
  assert.match(js,/data-team-deal/);
  assert.match(js,/data-team-hub-link/);
