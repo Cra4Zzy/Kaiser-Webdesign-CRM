@@ -142,3 +142,17 @@ test('automatic callback uses Berlin calendar across midnight and daylight savin
   assert.equal(patches.find(p=>p.table==='deals').values.next_follow_up,expected);
  }
 });
+
+test('accepted order stays in processing until project is explicitly completed',()=>{
+ const s=fixture();
+ execute(s,admin,'customer_win',1,{confirmed:true,value:897,service_type:'website'});
+ assert.equal(s.deals[0].stage,'won');
+ assert.equal(s.projects[0].status,'active');
+ assert.throws(()=>execute(s,admin,'project_complete',1,{confirmed:false}),/bestätigen/);
+ assert.equal(s.projects[0].status,'active');
+ execute(s,admin,'project_complete',1,{confirmed:'yes'});
+ assert.equal(s.projects[0].status,'done');
+ assert.equal(s.deals[0].stage,'won');
+ assert.equal(s.deals[0].value,897);
+ assert.throws(()=>execute(s,admin,'project_complete',1,{confirmed:'yes'}),/bereits abgeschlossen/);
+});
