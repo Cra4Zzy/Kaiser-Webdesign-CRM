@@ -141,3 +141,16 @@ test('all 12 dashboard status colors remain distinct and critical pairs have the
  assert.equal(new Set(Object.values(map).map(c=>c.toLowerCase())).size,12);
  for(const [a,b] of [['new','contacted'],['reached','interest'],['stopped','offer_demo'],['followup','no_interest']])assert.notEqual(map[a],map[b]);
 });
+
+
+test('dashboard without table or kanban saves navigation state without null.map exception',()=>{
+ const result=frontend(emptySnapshot(),'screenState()');
+ assert.deepEqual(result.areas,[]);
+ assert.equal(result.scrollX,0);
+ assert.equal(result.scrollY,0);
+ assert.equal(result.route,'');
+});
+test('scroll state reads all optional scroll areas, never a single nullable element',()=>{
+ assert.match(source,/areas:\$\$\('\.table-wrap,\.pipeline-desktop'\)\.map/);
+ assert.doesNotMatch(source,/areas:\$\('\.table-wrap,\.pipeline-desktop'\)\.map/);
+});
