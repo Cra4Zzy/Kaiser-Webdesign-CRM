@@ -11,6 +11,17 @@
   const mineMsg=Number(m.member_id)===memberId,li=document.createElement('article');li.className='hub-message'+(mineMsg?' mine':'')+(m.kind==='system'?' system':'');
   const head=document.createElement('header');head.textContent=m.sender_name+' · '+fmt(m.created_at);
   const text=document.createElement('p');text.textContent=m.body;li.append(head,text);
+  // The backend supplies normalized company/lead names even for historical events.
+  if(m.deal_id&&(m.company_name||m.deal_title)){
+   const lead=document.createElement('div');lead.className='hub-message-lead';
+   const label=document.createElement('small');label.textContent='ZUGEHÖRIGER LEAD';
+   const title=document.createElement('strong');title.textContent=m.company_name||m.deal_title;
+   lead.append(label,title);
+   if(m.deal_title&&m.company_name&&m.deal_title!==m.company_name){
+    const detail=document.createElement('span');detail.textContent=m.deal_title;lead.append(detail);
+   }
+   li.append(lead);
+  }
   if(m.deal_id){const a=document.createElement('a');a.href='#deal/'+m.deal_id;a.textContent='Lead öffnen';a.addEventListener('click',()=>toggle(false));li.append(a)}
   return li;
  }
@@ -65,8 +76,8 @@
  function renderClaims(){
   const live=availableClaims();
   claimList.replaceChildren(...live.slice(0,12).map(c=>{
-    const li=document.createElement('li');const a=document.createElement('a');a.href='#deal/'+c.deal_id;a.textContent=c.name+' · '+c.purpose;a.onclick=()=>toggle(false);
-    const small=document.createElement('small');small.textContent=c.mine?'Du bearbeitest diesen Lead':'Lead #'+c.deal_id;
+    const li=document.createElement('li');const a=document.createElement('a');a.href='#deal/'+c.deal_id;a.textContent=(c.company_name||'Lead #'+c.deal_id)+' · '+c.purpose;a.onclick=()=>toggle(false);
+    const small=document.createElement('small');small.textContent=(c.mine?'Du bearbeitest':'Bearbeitet von '+c.name)+(c.deal_title?' · '+c.deal_title:'');
     li.append(a,small);return li;
   }));
   if(!live.length){const li=document.createElement('li');li.className='hub-empty';li.textContent='Aktuell kein Lead reserviert.';claimList.append(li)}
